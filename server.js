@@ -281,6 +281,48 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// Helper: Fetch and parse class schedule page for mappings
+async function fetchScheduleMappings(cookies) {
+  try {
+    console.log('\n=== FETCHING SCHEDULE PAGE FOR MAPPINGS ===');
+    const response = await axios.get('https://operations.daxko.com/Online/5198/GXP/ClassSchedule.mvc', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Cookie': buildCookieString(cookies)
+      }
+    });
+
+    const html = response.data;
+
+    // Extract the props object from the script tag
+    const propsMatch = html.match(/var props = ({[\s\S]*?});[\s\S]*?props\.controller_url/);
+
+    if (!propsMatch) {
+      console.error('Could not find props object in HTML');
+      return null;
+    }
+
+    const propsJson = propsMatch[1];
+    const props = JSON.parse(propsJson);
+
+    console.log('Extracted mappings:');
+    console.log('- Instructors:', props.instructors.length);
+    console.log('- Areas:', props.areas.length);
+    console.log('- Branches:', props.branches.length);
+
+    return {
+      instructors: props.instructors,
+      areas: props.areas,
+      branches: props.branches,
+      gxp_account_id: props.gxp_account_id
+    };
+  } catch (error) {
+    console.error('Error fetching schedule mappings:', error.message);
+    return null;
+  }
+}
+
 // GET /api/schedule - Fetch schedule for a given date
 app.get('/api/schedule', async (req, res) => {
   const session = loadSession();
@@ -293,17 +335,32 @@ app.get('/api/schedule', async (req, res) => {
     // Get date from query parameter or use today
     const date = req.query.date || new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-    // Load the complete mappings from the working request
-    const fs = require('fs');
-    const allMappedAreas = JSON.parse(fs.readFileSync('/tmp/all_mapped_areas.json', 'utf8'));
-    const allMappedInstructor = JSON.parse(fs.readFileSync('/tmp/all_mapped_instructor.json', 'utf8'));
+    // Fetch the mappings from the schedule page
+    const mappings = await fetchScheduleMappings(session.cookies);
+
+    if (!mappings) {
+      return res.status(500).json({ error: 'Failed to fetch schedule mappings' });
+    }
+
+    // Build the mapped arrays
+    const allMappedAreas = mappings.areas.map(area => ({
+      gxp_studio_id: area.gxp_studio_id,
+      area_id: area.area_id,
+      area_name: area.area_name
+    }));
+
+    const allMappedInstructor = mappings.instructors.map(instructor => ({
+      gxp_instructor_id: instructor.gxp_instructor_id,
+      admin_id: instructor.admin_id,
+      first_name: instructor.first_name,
+      last_name: instructor.last_name,
+      admin_name: instructor.admin_name
+    }));
 
     const requestBody = {
       "all_mapped_areas": allMappedAreas,
       "all_mapped_instructor": allMappedInstructor,
-      "all_mapped_branches": [
-        {"gxp_location_id": 6469, "branch_id": 581, "branch_name": "Dell Jewish Community Center"}
-      ],
+      "all_mapped_branches": mappings.branches,
       "filters": {
         "date": date,
         "gxp_location_id": 6469,
@@ -312,7 +369,7 @@ app.get('/api/schedule', async (req, res) => {
         "gxp_class_name_ids": [],
         "gxp_category_ids": []
       },
-      "gxp_account_id": 1020,
+      "gxp_account_id": mappings.gxp_account_id,
       "any_exerciser_id_of_unit": 6093357,
       "page": 1
     };
