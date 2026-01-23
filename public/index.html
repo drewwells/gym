@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JCC Studio Availability</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Dell JCC Studio Availability</h1>
+            <p class="subtitle">Quick view of when studios are available</p>
+        </header>
+
+        <!-- Login Form (shown when not authenticated) -->
+        <div id="loginContainer" class="login-container">
+            <div class="login-card">
+                <h2>Login Required</h2>
+                <p>Please log in with your Dell JCC account to view studio availability</p>
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="username">Email</label>
+                        <input type="email" id="username" name="username" placeholder="your.email@example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    <button type="submit" class="btn-primary">Log In</button>
+                    <div id="loginError" class="error-message"></div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Schedule View (shown after authentication) -->
+        <div id="scheduleContainer" class="schedule-container" style="display: none;">
+            <div class="schedule-header">
+                <div class="date-display">
+                    <span class="date-label">Viewing:</span>
+                    <span id="currentDate"></span>
+                </div>
+                <div class="date-controls">
+                    <button id="prevDayBtn" class="btn-secondary">← Previous Day</button>
+                    <button id="todayBtn" class="btn-secondary">Today</button>
+                    <button id="nextDayBtn" class="btn-secondary">Next Day →</button>
+                    <button id="refreshBtn" class="btn-secondary">Refresh</button>
+                </div>
+            </div>
+
+            <div id="loadingIndicator" class="loading">
+                <p>Loading schedule...</p>
+            </div>
+
+            <div id="scheduleGrid" class="schedule-grid"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

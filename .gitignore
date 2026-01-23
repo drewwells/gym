@@ -1,0 +1,7 @@
+.claude/
+node_modules/
+.session.json
+.env
+*.log
+.DS_Store
+*.har
