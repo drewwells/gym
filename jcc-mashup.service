@@ -1,0 +1,33 @@
+[Unit]
+Description=My Node server.js
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/jcc-mashup
+
+# Install deps before start (idempotent-ish; npm ci is deterministic)
+ExecStartPre=/usr/bin/npm ci --omit=dev
+# If you DON'T have a lockfile, use this instead:
+# ExecStartPre=/usr/bin/npm install --omit=dev
+
+ExecStart=/usr/bin/node /opt/jcc-mashup/server.js
+
+Restart=on-failure
+RestartSec=2
+
+Restart=on-failure
+RestartSec=2
+
+# Optional: set env vars
+Environment=NODE_ENV=production
+Environment=PORT=8001
+# Or load from a file:
+# EnvironmentFile=/etc/jcc-mashup/myapp.env
+
+# Logs go to journald (view with journalctl)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
