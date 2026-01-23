@@ -37,7 +37,12 @@ async function init() {
 // Check if user has valid session
 async function checkSession() {
   try {
-    const response = await fetch('/api/session');
+    const sessionToken = localStorage.getItem('sessionToken');
+
+    const response = await fetch('/api/session', {
+      credentials: 'include',
+      headers: sessionToken ? { 'X-Session-Token': sessionToken } : {}
+    });
 
     if (response.ok) {
       const data = await response.json();
@@ -88,11 +93,19 @@ async function handleLogin(e) {
   try {
     const response = await fetch('/api/login', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
     });
 
     if (response.ok) {
+      const data = await response.json();
+
+      // Store session token in localStorage
+      if (data.sessionToken) {
+        localStorage.setItem('sessionToken', data.sessionToken);
+      }
+
       // Login successful, load schedule
       loginContainer.style.display = 'none';
       scheduleContainer.style.display = 'block';
@@ -123,10 +136,16 @@ async function loadSchedule() {
 
   try {
     const dateStr = currentViewDate.toISOString().split('T')[0];
-    const response = await fetch(`/api/schedule?date=${dateStr}`);
+    const sessionToken = localStorage.getItem('sessionToken');
+
+    const response = await fetch(`/api/schedule?date=${dateStr}`, {
+      credentials: 'include',
+      headers: sessionToken ? { 'X-Session-Token': sessionToken } : {}
+    });
 
     if (response.status === 401) {
-      // Session expired, show login and prompt user
+      // Session expired, clear token and show login
+      localStorage.removeItem('sessionToken');
       loginContainer.style.display = 'block';
       scheduleContainer.style.display = 'none';
       loginError.textContent = 'Your session has expired. Please log in again.';

@@ -1,53 +1,98 @@
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const SESSION_FILE = path.join(__dirname, '.session.json');
 
+// In-memory session store (sessionToken -> cookies mapping)
+const sessionStore = new Map();
+
 // Middleware
-app.use(cors());
+app.use(cors({ credentials: true, origin: true }));
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// Helper: Load session from file
-function loadSession() {
+// Helper: Generate secure session token
+function generateSessionToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+// Helper: Load session from in-memory store
+function loadSession(sessionToken) {
+  if (!sessionToken) return null;
+
+  const session = sessionStore.get(sessionToken);
+  if (!session) return null;
+
+  // Check if session is older than 6 months
+  const sessionAge = Date.now() - session.timestamp;
+  const maxAge = 6 * 30 * 24 * 60 * 60 * 1000; // 6 months (approximately)
+
+  if (sessionAge > maxAge) {
+    console.log('Session expired (older than 6 months)');
+    sessionStore.delete(sessionToken);
+    return null;
+  }
+
+  return session;
+}
+
+// Helper: Save session to in-memory store
+function saveSession(sessionToken, cookies) {
+  sessionStore.set(sessionToken, {
+    cookies,
+    timestamp: Date.now()
+  });
+  console.log('Session saved successfully');
+}
+
+// Helper: Load sessions from disk on startup
+function loadSessionsFromDisk() {
   try {
     if (fs.existsSync(SESSION_FILE)) {
       const data = fs.readFileSync(SESSION_FILE, 'utf8');
-      const session = JSON.parse(data);
+      const sessions = JSON.parse(data);
 
-      // Check if session is older than 7 days
-      const sessionAge = Date.now() - session.timestamp;
-      const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+      // Load all sessions into memory
+      Object.entries(sessions).forEach(([token, session]) => {
+        sessionStore.set(token, session);
+      });
 
-      if (sessionAge > maxAge) {
-        console.log('Session expired (older than 7 days)');
-        fs.unlinkSync(SESSION_FILE);
-        return null;
-      }
-
-      return session;
+      console.log(`Loaded ${sessionStore.size} sessions from disk`);
     }
   } catch (error) {
-    console.error('Error loading session:', error);
+    console.error('Error loading sessions from disk:', error);
   }
-  return null;
 }
 
-// Helper: Save session to file
-function saveSession(cookies) {
+// Helper: Save sessions to disk periodically
+function saveSessionsToDisk() {
   try {
-    fs.writeFileSync(SESSION_FILE, JSON.stringify({ cookies, timestamp: Date.now() }, null, 2));
-    console.log('Session saved successfully');
+    const sessions = {};
+    sessionStore.forEach((session, token) => {
+      sessions[token] = session;
+    });
+
+    fs.writeFileSync(SESSION_FILE, JSON.stringify(sessions, null, 2));
+    console.log('Sessions persisted to disk');
   } catch (error) {
-    console.error('Error saving session:', error);
+    console.error('Error saving sessions to disk:', error);
   }
 }
+
+// Load sessions on startup
+loadSessionsFromDisk();
+
+// Save sessions to disk every 5 minutes
+setInterval(saveSessionsToDisk, 5 * 60 * 1000);
 
 // Helper: Extract cookies from response headers
 function extractCookies(headers) {
@@ -71,7 +116,9 @@ function buildCookieString(cookies) {
 
 // GET /api/session - Check if session is valid
 app.get('/api/session', async (req, res) => {
-  const session = loadSession();
+  const sessionToken = req.headers['x-session-token'] || req.cookies?.sessionToken;
+
+  const session = loadSession(sessionToken);
 
   if (!session || !session.cookies) {
     return res.status(401).json({ authenticated: false });
@@ -267,9 +314,22 @@ app.post('/api/login', async (req, res) => {
 
     // Check if we got the auth cookie
     if (allCookies['.online_auth']) {
-      saveSession(allCookies);
+      // Generate session token
+      const sessionToken = generateSessionToken();
+      saveSession(sessionToken, allCookies);
+
       console.log('Login successful!');
-      res.json({ success: true, message: 'Login successful' });
+
+      // Set cookie with 6-month expiration
+      const sixMonths = 6 * 30 * 24 * 60 * 60 * 1000;
+      res.cookie('sessionToken', sessionToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: sixMonths,
+        sameSite: 'lax'
+      });
+
+      res.json({ success: true, message: 'Login successful', sessionToken });
     } else {
       console.log('Login failed - no auth cookie received');
       res.status(401).json({ error: 'Login failed - invalid credentials' });
@@ -325,7 +385,9 @@ async function fetchScheduleMappings(cookies) {
 
 // GET /api/schedule - Fetch schedule for a given date
 app.get('/api/schedule', async (req, res) => {
-  const session = loadSession();
+  const sessionToken = req.headers['x-session-token'] || req.cookies?.sessionToken;
+
+  const session = loadSession(sessionToken);
 
   if (!session || !session.cookies) {
     return res.status(401).json({ error: 'Not authenticated. Please log in.' });
