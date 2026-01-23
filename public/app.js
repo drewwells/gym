@@ -114,7 +114,7 @@ async function loadSchedule() {
 
   // Update date display
   const isToday = isSameDay(currentViewDate, new Date());
-  currentDateEl.textContent = currentViewDate.toLocaleDateFormat('en-US', {
+  currentDateEl.textContent = currentViewDate.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
