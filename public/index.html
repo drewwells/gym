@@ -35,17 +35,9 @@
 
         <!-- Schedule View (shown after authentication) -->
         <div id="scheduleContainer" class="schedule-container" style="display: none;">
-            <div class="schedule-header">
-                <div class="date-display">
-                    <span class="date-label">Viewing:</span>
-                    <span id="currentDate"></span>
-                </div>
-                <div class="date-controls">
-                    <button id="prevDayBtn" class="btn-secondary">← Previous Day</button>
-                    <button id="todayBtn" class="btn-secondary">Today</button>
-                    <button id="nextDayBtn" class="btn-secondary">Next Day →</button>
-                    <button id="refreshBtn" class="btn-secondary">Refresh</button>
-                </div>
+            <div class="date-display">
+                <span class="date-label">Viewing:</span>
+                <span id="currentDate"></span>
             </div>
 
             <div id="loadingIndicator" class="loading">
@@ -53,6 +45,13 @@
             </div>
 
             <div id="scheduleGrid" class="schedule-grid"></div>
+
+            <div class="date-controls">
+                <button id="prevDayBtn" class="btn-secondary">← Previous Day</button>
+                <button id="todayBtn" class="btn-secondary">Today</button>
+                <button id="nextDayBtn" class="btn-secondary">Next Day →</button>
+                <button id="refreshBtn" class="btn-secondary">Refresh</button>
+            </div>
         </div>
     </div>
 

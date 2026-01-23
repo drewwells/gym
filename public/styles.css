@@ -26,13 +26,13 @@ header {
 }
 
 header h1 {
-  font-size: 2.5rem;
+  font-size: 1.8rem;
   margin-bottom: 10px;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .subtitle {
-  font-size: 1.1rem;
+  font-size: 1rem;
   opacity: 0.95;
 }
 
@@ -114,29 +114,28 @@ header h1 {
 /* Schedule Container */
 .schedule-container {
   background: white;
-  padding: 30px;
+  padding: 20px;
   border-radius: 12px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-}
-
-.schedule-header {
   display: flex;
   flex-direction: column;
-  gap: 15px;
-  margin-bottom: 25px;
-  padding-bottom: 15px;
-  border-bottom: 2px solid #e0e0e0;
+}
+
+.date-display {
+  font-size: 1.1rem;
+  color: #333;
+  margin-bottom: 15px;
+  order: 0;
 }
 
 .date-controls {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.date-display {
-  font-size: 1.2rem;
-  color: #333;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 2px solid #e0e0e0;
+  order: 2;
 }
 
 .date-label {
@@ -171,6 +170,7 @@ header h1 {
   border: 1px solid #e0e0e0;
   border-radius: 8px;
   overflow: hidden;
+  order: 1;
 }
 
 .grid-header {
@@ -258,6 +258,7 @@ header h1 {
   padding: 40px;
   color: #667eea;
   font-size: 1.1rem;
+  order: 1;
 }
 
 .error-message {
@@ -273,11 +274,11 @@ header h1 {
 /* Responsive Design */
 @media (max-width: 768px) {
   header h1 {
-    font-size: 1.8rem;
+    font-size: 1.5rem;
   }
 
   .subtitle {
-    font-size: 1rem;
+    display: none;
   }
 
   .login-card {
@@ -298,41 +299,41 @@ header h1 {
     width: 100%;
   }
 
-  /* Stack grid on mobile */
+  /* Keep 3-column grid on mobile, just make it more compact */
   .schedule-grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    background: transparent;
-    border: none;
+    grid-template-columns: 70px 1fr 1fr;
+    font-size: 0.85rem;
   }
 
-  .grid-header {
-    display: none;
-  }
-
-  .grid-row {
-    display: grid;
-    grid-template-columns: 100px 1fr;
-    gap: 1px;
-    background: #e0e0e0;
-    border-radius: 8px;
-    overflow: hidden;
-    margin-bottom: 10px;
+  .header-cell {
+    font-size: 0.75rem;
+    padding: 10px 5px;
   }
 
   .time-cell {
-    grid-column: 1 / -1;
-    background: #667eea;
-    color: white;
-    font-weight: 700;
+    font-size: 0.8rem;
+    padding: 12px 5px;
   }
 
-  .grid-cell:not(.time-cell)::before {
-    content: attr(data-studio);
-    font-weight: 600;
-    font-size: 0.85rem;
-    margin-bottom: 8px;
-    color: #667eea;
+  .grid-cell {
+    padding: 10px 5px;
+    min-height: 60px;
+  }
+
+  .class-name {
+    font-size: 0.8rem;
+  }
+
+  .class-instructor {
+    font-size: 0.75rem;
+  }
+
+  .class-capacity {
+    font-size: 0.7rem;
+  }
+
+  .availability-badge {
+    font-size: 0.9rem;
   }
 }
 
@@ -342,7 +343,7 @@ header h1 {
   }
 
   header h1 {
-    font-size: 1.5rem;
+    font-size: 1.3rem;
   }
 
   .login-card {
@@ -350,6 +351,43 @@ header h1 {
   }
 
   .schedule-container {
-    padding: 15px;
+    padding: 12px;
+  }
+
+  /* Even more compact for very small screens */
+  .schedule-grid {
+    grid-template-columns: 60px 1fr 1fr;
+    font-size: 0.8rem;
+  }
+
+  .header-cell {
+    font-size: 0.7rem;
+    padding: 8px 3px;
+  }
+
+  .time-cell {
+    font-size: 0.75rem;
+    padding: 10px 3px;
+  }
+
+  .grid-cell {
+    padding: 8px 3px;
+    min-height: 50px;
+  }
+
+  .class-name {
+    font-size: 0.75rem;
+  }
+
+  .class-instructor {
+    font-size: 0.7rem;
+  }
+
+  .class-capacity {
+    font-size: 0.65rem;
+  }
+
+  .availability-badge {
+    font-size: 0.85rem;
   }
 }
