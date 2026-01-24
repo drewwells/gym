@@ -19,6 +19,11 @@ const GYM_HOURS = generateHourlySlots(6, 18); // 6 AM to 6 PM
 // State
 let currentViewDate = new Date();
 
+// If it's after noon, default to showing tomorrow's schedule
+if (currentViewDate.getHours() >= 12) {
+  currentViewDate.setDate(currentViewDate.getDate() + 1);
+}
+
 // Initialize
 init();
 
