@@ -118,15 +118,39 @@ function buildCookieString(cookies) {
 app.get('/api/session', async (req, res) => {
   const sessionToken = req.headers['x-session-token'] || req.cookies?.sessionToken;
 
+  console.log('\n=== SESSION CHECK ===');
+  console.log('Session token from header:', req.headers['x-session-token'] ? 'Present' : 'Missing');
+  console.log('Session token from cookie:', req.cookies?.sessionToken ? 'Present' : 'Missing');
+  console.log('Token being used:', sessionToken ? sessionToken.substring(0, 8) + '...' : 'None');
+
   const session = loadSession(sessionToken);
 
   if (!session || !session.cookies) {
+    console.log('❌ SESSION INVALID:');
+    if (!sessionToken) {
+      console.log('  - No token provided');
+    } else if (!session) {
+      console.log('  - Token not found in session store');
+      console.log('  - Active sessions:', sessionStore.size);
+    } else if (!session.cookies) {
+      console.log('  - Session found but no cookies stored');
+    }
     return res.status(401).json({ authenticated: false });
   }
 
+  const sessionAge = Date.now() - session.timestamp;
+  const maxAge = 6 * 30 * 24 * 60 * 60 * 1000; // 6 months
+  const ageInHours = Math.floor(sessionAge / (1000 * 60 * 60));
+  const ageInDays = Math.floor(sessionAge / (1000 * 60 * 60 * 24));
+
+  console.log('✅ SESSION VALID:');
+  console.log('  - Age:', ageInHours, 'hours (', ageInDays, 'days )');
+  console.log('  - Max age:', Math.floor(maxAge / (1000 * 60 * 60 * 24)), 'days');
+  console.log('  - Time remaining:', Math.floor((maxAge - sessionAge) / (1000 * 60 * 60 * 24)), 'days');
+
   res.json({
     authenticated: true,
-    sessionAge: Date.now() - session.timestamp,
+    sessionAge: sessionAge,
     timestamp: session.timestamp
   });
 });
@@ -387,11 +411,27 @@ async function fetchScheduleMappings(cookies) {
 app.get('/api/schedule', async (req, res) => {
   const sessionToken = req.headers['x-session-token'] || req.cookies?.sessionToken;
 
+  console.log('\n=== SCHEDULE REQUEST ===');
+  console.log('Session token from header:', req.headers['x-session-token'] ? 'Present' : 'Missing');
+  console.log('Session token from cookie:', req.cookies?.sessionToken ? 'Present' : 'Missing');
+
   const session = loadSession(sessionToken);
 
   if (!session || !session.cookies) {
+    console.log('❌ SCHEDULE REQUEST DENIED - Session invalid');
+    if (!sessionToken) {
+      console.log('  - No token provided');
+    } else if (!session) {
+      console.log('  - Token not found in session store');
+      console.log('  - Token:', sessionToken.substring(0, 8) + '...');
+      console.log('  - Active sessions:', sessionStore.size);
+    } else if (!session.cookies) {
+      console.log('  - Session found but no cookies stored');
+    }
     return res.status(401).json({ error: 'Not authenticated. Please log in.' });
   }
+
+  console.log('✅ SCHEDULE REQUEST AUTHORIZED');
 
   try {
     // Get date from query parameter or use today
