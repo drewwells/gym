@@ -33,7 +33,7 @@ A clean, optimized web application that shows when the Mind-Body Studio and Grou
 
 ## Usage
 
-1. **Login**: Enter your Dell JCC account credentials (same as the Daxko online portal)
+1. **Login**: Enter your account credentials (same as the Daxko online portal)
 2. **View Availability**: The grid shows hourly time slots from 6 AM to 6 PM
    - **Green slots** = Studio is AVAILABLE for use
    - **Gray slots** = Studio is booked with a class
@@ -93,9 +93,7 @@ jcc-mashup/
 ## Troubleshooting
 
 ### Login fails
-- Check your credentials (same as Daxko online portal)
-- Ensure you have an active Dell JCC membership
-- Try logging into the official Daxko site first to verify credentials
+- Check your credentials
 
 ### Schedule not loading
 - Click the refresh button
@@ -119,8 +117,3 @@ Possible features to add:
 ## License
 
 MIT License - Feel free to use and modify as needed!
-
-## Acknowledgments
-
-- Built for Dell Jewish Community Center members
-- Uses Daxko Operations API for schedule data
