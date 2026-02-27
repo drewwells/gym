@@ -1,0 +1,11 @@
+services:
+  jcc-mashup:
+    build: .
+    image: jcc-mashup:latest
+    container_name: jcc-mashup
+    restart: unless-stopped
+    ports:
+      - "8001:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
