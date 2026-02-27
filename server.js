@@ -508,6 +508,6 @@ app.get('/api/schedule', async (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`JCC Studio Availability server running at http://localhost:${PORT}`);
+  console.log(`Studio Availability server running at http://localhost:${PORT}`);
   console.log('Visit the URL above to view studio availability');
 });

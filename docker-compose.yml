@@ -1,8 +1,8 @@
 services:
-  jcc-mashup:
+  gym:
     build: .
     image: jcc-mashup:latest
-    container_name: jcc-mashup
+    container_name: gym
     restart: unless-stopped
     ports:
       - "8001:3000"

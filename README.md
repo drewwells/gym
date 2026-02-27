@@ -58,20 +58,6 @@ A clean, optimized web application that shows when the Mind-Body Studio and Grou
 - Session file (`.session.json`) is gitignored
 - No data is sent to any third-party services
 
-## Project Structure
-
-```
-jcc-mashup/
-├── server.js              # Express backend (login & API proxy)
-├── package.json           # Node.js dependencies
-├── .gitignore            # Ignore session files
-├── README.md             # This file
-└── public/               # Frontend files
-    ├── index.html        # Main HTML structure
-    ├── app.js            # Frontend JavaScript
-    └── styles.css        # Responsive CSS styling
-```
-
 ## Technical Details
 
 ### Backend (Node.js + Express)
