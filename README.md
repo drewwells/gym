@@ -1,6 +1,6 @@
-# Dell JCC Studio Availability Mashup
+# Studio Availability Mashup
 
-A clean, optimized web application that shows when the Mind-Body Studio and Group Exercise Studio are available at the Dell Jewish Community Center.
+A clean, optimized web application that shows when the Mind-Body Studio and Group Exercise Studio are available.
 
 ## Features
 
