@@ -1,4 +1,4 @@
-SERVICE=jcc-mashup
+SERVICE=gym
 SERVICE_FILE=$(SERVICE).service
 SYSTEMD_DIR=/etc/systemd/system
 

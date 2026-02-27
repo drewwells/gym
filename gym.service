@@ -1,12 +1,12 @@
 [Unit]
-Description=JCC Studio Availability Mashup
+Description=Studio Availability Mashup
 After=docker.service
 Requires=docker.service
 
 [Service]
 Restart=always
 RestartSec=5
-WorkingDirectory=/home/drew/src/github.com/drewwells/jcc-mashup
+WorkingDirectory=/home/drew/src/github.com/drewwells/gym
 
 ExecStart=/usr/bin/docker compose up --build
 ExecStop=/usr/bin/docker compose down
