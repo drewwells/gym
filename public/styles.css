@@ -14,7 +14,7 @@ body {
 }
 
 .container {
-  max-width: 1200px;
+  max-width: 900px;
   margin: 0 auto;
 }
 
@@ -22,12 +22,12 @@ body {
 header {
   text-align: center;
   color: #2c3e50;
-  margin-bottom: 30px;
+  margin-bottom: 24px;
 }
 
 header h1 {
   font-size: 1.8rem;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   font-weight: 600;
   color: #34495e;
 }
@@ -37,121 +37,44 @@ header h1 {
   color: #7f8c8d;
 }
 
-/* Login Container */
-.login-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 400px;
-}
-
-.login-card {
-  background: white;
-  padding: 40px;
-  border-radius: 20px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  max-width: 400px;
-  width: 100%;
-}
-
-.login-card h2 {
-  margin-bottom: 10px;
-  color: #2c3e50;
-  font-weight: 600;
-}
-
-.login-card p {
-  margin-bottom: 25px;
-  color: #7f8c8d;
-  font-size: 0.95rem;
-}
-
-.form-group {
-  margin-bottom: 20px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 8px;
+.subtitle a {
+  color: #3498db;
+  text-decoration: none;
   font-weight: 500;
-  color: #444;
 }
 
-.form-group input {
-  width: 100%;
-  padding: 12px;
-  border: 2px solid #ecf0f1;
-  border-radius: 10px;
-  font-size: 1rem;
-  transition: all 0.3s;
-  background: #f8f9fa;
+.subtitle a:hover {
+  text-decoration: underline;
 }
 
-.form-group input:focus {
-  outline: none;
-  border-color: #3498db;
-  background: white;
-}
-
-.btn-primary {
-  width: 100%;
-  padding: 14px;
-  background: #3498db;
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.btn-primary:hover {
-  background: #2980b9;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
-}
-
-.btn-primary:active {
-  transform: translateY(0);
-}
-
-/* Schedule Container */
+/* Schedule (day) container */
 .schedule-container {
   background: white;
-  padding: 30px;
+  padding: 28px;
   border-radius: 20px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
 }
 
-.date-display {
-  font-size: 1.2rem;
+.date-header {
+  font-size: 1.3rem;
   color: #2c3e50;
-  margin-bottom: 20px;
-  order: 0;
-  font-weight: 500;
+  font-weight: 600;
+  margin-bottom: 16px;
 }
 
 .date-controls {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 25px;
-  padding-top: 25px;
-  border-top: 2px solid #ecf0f1;
-  order: 2;
-}
-
-.date-label {
-  font-weight: 600;
-  color: #3498db;
-  margin-right: 8px;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #ecf0f1;
 }
 
 .btn-secondary {
-  padding: 10px 20px;
+  padding: 10px 18px;
   background: #f8f9fa;
   color: #2c3e50;
   border: 2px solid #ecf0f1;
@@ -159,7 +82,7 @@ header h1 {
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.2s;
 }
 
 .btn-secondary:hover {
@@ -168,115 +91,86 @@ header h1 {
   border-color: #3498db;
 }
 
-/* Schedule Grid */
-.schedule-grid {
-  display: grid;
-  grid-template-columns: 90px 1fr 1fr;
-  gap: 12px;
-  order: 1;
-}
-
-.grid-header {
-  display: contents;
-}
-
-.grid-row {
-  display: contents;
-}
-
-.grid-cell {
-  background: #f8f9fa;
-  padding: 16px;
+/* Event list */
+.event-list {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  min-height: 75px;
-  border-radius: 12px;
-  transition: all 0.2s;
+  gap: 12px;
 }
 
-.header-cell {
-  background: #34495e;
-  color: white;
-  font-weight: 600;
-  font-size: 0.9rem;
-  text-align: center;
+.event-item {
+  background: #f8f9fa;
+  border-left: 4px solid #3498db;
   border-radius: 12px;
+  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: 160px 1fr auto;
+  gap: 16px;
+  align-items: start;
+  transition: box-shadow 0.2s;
 }
 
-.time-cell {
+.event-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.event-time {
   font-weight: 600;
-  color: #7f8c8d;
-  text-align: center;
-  font-size: 0.85rem;
-  background: transparent;
+  color: #34495e;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.event-body {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
-/* Available Slot */
-.slot-available {
-  background: #d5f4e6;
-  color: #27ae60;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  border-left: 4px solid #27ae60;
-}
-
-.slot-available:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(39, 174, 96, 0.15);
-}
-
-.availability-badge {
+.event-name {
   font-size: 1rem;
   font-weight: 600;
-}
-
-/* Booked Slot */
-.slot-booked {
-  background: white;
   color: #2c3e50;
-  border-left: 4px solid #95a5a6;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
-.slot-booked:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.slot-full {
-  border-left: 4px solid #e74c3c;
-  background: #ffeaea;
-}
-
-.class-name {
-  font-weight: 600;
-  color: #2c3e50;
-  margin-bottom: 6px;
-  font-size: 0.9rem;
-}
-
-.class-instructor {
-  font-size: 0.8rem;
+.event-desc {
+  font-size: 0.85rem;
   color: #7f8c8d;
-  margin-bottom: 4px;
+  line-height: 1.4;
 }
 
-.class-capacity {
-  font-size: 0.75rem;
+.event-meta {
+  font-size: 0.8rem;
   color: #95a5a6;
+}
+
+.event-link {
+  color: #3498db;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  align-self: center;
+}
+
+.event-link:hover {
+  text-decoration: underline;
+}
+
+.empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: #95a5a6;
+  font-size: 1rem;
 }
 
 /* Loading and Error States */
 .loading {
   text-align: center;
-  padding: 40px;
+  padding: 30px;
   color: #3498db;
-  font-size: 1.1rem;
-  order: 1;
+  font-size: 1rem;
 }
 
 .error-message {
@@ -284,73 +178,43 @@ header h1 {
   color: #e74c3c;
   padding: 12px;
   border-radius: 10px;
-  margin-top: 15px;
+  margin-bottom: 15px;
   font-size: 0.9rem;
   border-left: 4px solid #e74c3c;
+}
+
+footer {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #95a5a6;
+}
+
+footer a {
+  color: #7f8c8d;
 }
 
 /* Responsive Design */
 @media (max-width: 768px) {
   header h1 {
-    font-size: 1.5rem;
-  }
-
-  .subtitle {
-    display: none;
-  }
-
-  .login-card {
-    padding: 25px;
+    font-size: 1.4rem;
   }
 
   .schedule-container {
-    padding: 20px;
-  }
-
-  .schedule-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 15px;
+    padding: 18px;
   }
 
   .btn-secondary {
-    width: 100%;
+    flex: 1 1 calc(50% - 10px);
   }
 
-  /* Keep 3-column grid on mobile, just make it more compact */
-  .schedule-grid {
-    grid-template-columns: 65px 1fr 1fr;
+  .event-item {
+    grid-template-columns: 1fr;
     gap: 8px;
   }
 
-  .header-cell {
-    font-size: 0.75rem;
-    padding: 10px 8px;
-  }
-
-  .time-cell {
-    font-size: 0.75rem;
-  }
-
-  .grid-cell {
-    padding: 12px 8px;
-    min-height: 65px;
-  }
-
-  .class-name {
-    font-size: 0.8rem;
-  }
-
-  .class-instructor {
-    font-size: 0.75rem;
-  }
-
-  .class-capacity {
-    font-size: 0.7rem;
-  }
-
-  .availability-badge {
-    font-size: 0.9rem;
+  .event-link {
+    align-self: flex-start;
   }
 }
 
@@ -360,54 +224,14 @@ header h1 {
   }
 
   header h1 {
-    font-size: 1.3rem;
+    font-size: 1.2rem;
   }
 
-  .login-card {
-    padding: 20px;
-  }
-
-  .schedule-container {
-    padding: 12px;
-  }
-
-  /* Even more compact for very small screens */
-  .schedule-grid {
-    grid-template-columns: 55px 1fr 1fr;
-    gap: 6px;
-  }
-
-  .header-cell {
-    font-size: 0.7rem;
-    padding: 8px 5px;
-  }
-
-  .time-cell {
-    font-size: 0.7rem;
-  }
-
-  .grid-cell {
-    padding: 10px 6px;
-    min-height: 60px;
+  .date-header {
+    font-size: 1.1rem;
   }
 
   .schedule-container {
-    padding: 15px;
-  }
-
-  .class-name {
-    font-size: 0.75rem;
-  }
-
-  .class-instructor {
-    font-size: 0.7rem;
-  }
-
-  .class-capacity {
-    font-size: 0.65rem;
-  }
-
-  .availability-badge {
-    font-size: 0.85rem;
+    padding: 14px;
   }
 }

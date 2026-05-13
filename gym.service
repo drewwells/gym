@@ -1,15 +1,15 @@
 [Unit]
-Description=Studio Availability Mashup
-After=docker.service
-Requires=docker.service
+Description=Crux Climbing Calendar
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Restart=always
 RestartSec=5
-WorkingDirectory=/home/drew/src/github.com/drewwells/gym
-
-ExecStart=/usr/bin/docker compose up --build
-ExecStop=/usr/bin/docker compose down
+WorkingDirectory=%h/src/github.com/drewwells/gym
+ExecStart=/home/drew/.local/bin/podman-compose up --build
+ExecStop=/home/drew/.local/bin/podman-compose down
+TimeoutStopSec=30
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
