@@ -1,105 +1,77 @@
-# Studio Availability Mashup
+# Crux Climbing Calendar
 
-A clean, optimized web application that shows when the Mind-Body Studio and Group Exercise Studio are available.
+A small read-only viewer for the public Crux Climbing Center (Central
+Austin) class calendar, served at `gym.jayloves.us`.
+
+It proxies the public widget endpoint that
+[cruxclimbingcenter.com](https://www.cruxclimbingcenter.com/central-austin/calendar/)
+uses to render its own calendar, and shows one day at a time with
+prev/today/next navigation. Each event links back to Crux's calendar page
+for details and booking.
+
+No login. No accounts. No state on disk.
 
 ## Features
 
-- **Easy Login**: Simple username/password authentication with session caching
-- **Real-time Data**: Fetches live schedule data from Daxko API
-- **Availability Focus**: Highlights when studios are FREE with prominent visual indicators
-- **Context Information**: Shows class names when studios are booked
-- **Responsive Design**: Works seamlessly on desktop and mobile devices
-- **Auto-refresh**: Manual refresh button to get latest schedule
+- Day list of Crux Central classes &amp; events for the selected date
+- Prev / Today / Next navigation, with current date defaulting to today
+  (America/Chicago)
+- 7-day in-memory cache (10 min TTL) so date-nav is instant
+- Direct links to the Crux calendar page from the header and from each
+  event row
+- Responsive (desktop + mobile)
 
-## Studio Coverage
+## Local development
 
-- **Mind-Body Studio** - Perfect for yoga, pilates, meditation
-- **Group Exercise Studio** - Great for cardio, strength training, dance classes
+```bash
+npm install
+make dev      # runs `node server.js` on PORT=8001
+```
 
-## Installation
+Then open <http://localhost:8001/>.
 
-1. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+API:
 
-2. **Start the server**:
-   ```bash
-   npm start
-   ```
+- `GET /api/events?date=YYYY-MM-DD` — events for the 7-day window starting
+  at midnight America/Chicago of `date` (defaults to today). Append
+  `&refresh=1` to bypass the cache.
+- `GET /api/health` — health probe.
 
-3. **Open your browser**:
-   Navigate to [http://localhost:3000](http://localhost:3000)
+## Deploy (rootless Podman + user systemd)
 
-## Usage
+This project runs as **rootless Podman** managed by a **user systemd
+unit**. Container storage is pinned to `/mnt/pcixdisk/podman/drew/` (the
+boot disk stays clean). See `PODMAN_HANDOFF.md` for the full host setup
+and rationale.
 
-1. **Login**: Enter your account credentials (same as the Daxko online portal)
-2. **View Availability**: The grid shows hourly time slots from 6 AM to 6 PM
-   - **Green slots** = Studio is AVAILABLE for use
-   - **Gray slots** = Studio is booked with a class
-3. **Refresh**: Click the refresh button to get the latest schedule
+Install / update:
 
-## How It Works
+```bash
+make install-service   # one-time: installs ~/.config/systemd/user/gym.service
+make deploy            # rebuild image and restart the user unit
+make logs              # tail container logs
+make status            # systemd status
+```
 
-### Authentication
-- Your credentials are sent securely to the Daxko API
-- Session cookies are cached locally in `.session.json`
-- You won't need to re-login until the session expires
+The compose file maps host `:8001` → container `:3000`. DNS/TLS for
+`gym.jayloves.us` is handled separately (reverse proxy / tunnel).
 
-### Schedule Display
-- Fetches today's class schedule from Daxko
-- Generates hourly time slots (6 AM - 6 PM)
-- Compares scheduled classes against time slots
-- Highlights available (free) time slots in green
-- Shows class info for booked slots
+## How it works
 
-### Data Privacy
-- Credentials are only stored locally on your machine
-- Session file (`.session.json`) is gitignored
-- No data is sent to any third-party services
+Single Express server. One route: `GET /api/events`. Server fetches the
+public Crux widget endpoint:
 
-## Technical Details
+```
+https://widgets.api.prod.tilefive.com/cal
+  ?startDT=...&endDT=...&locationId=2&page=1&pageSize=200
+```
 
-### Backend (Node.js + Express)
-- **POST /api/login** - Authenticates with Daxko, caches session
-- **GET /api/schedule** - Fetches today's schedule with cached credentials
-
-### Daxko API Integration
-- **Login endpoint**: `https://operations.daxko.com/online/5198/Security/login.mvc/log_in`
-- **Schedule endpoint**: `https://operations.daxko.com/online/5198/GXP/ClassSchedule.mvc/get_gxp_classes`
-- **Studio IDs**:
-  - Mind-Body Studio: 32539
-  - Group Exercise Studio: 32538
-
-### Frontend (Vanilla JavaScript)
-- No frameworks required - pure HTML/CSS/JS
-- Responsive grid layout using CSS Grid
-- Handles authentication state automatically
-
-## Troubleshooting
-
-### Login fails
-- Check your credentials
-
-### Schedule not loading
-- Click the refresh button
-- Check browser console for errors
-- Session may have expired - try logging in again
-
-### Mobile view issues
-- Ensure viewport is set correctly (it is by default)
-- Try refreshing the page
-- Works best in modern browsers (Chrome, Firefox, Safari, Edge)
-
-## Future Enhancements
-
-Possible features to add:
-- Multi-day view (week ahead)
-- Filter by studio
-- Push notifications for availability changes
-- Export to calendar (iCal)
-- Favorite time slots
+Headers (`X-Api-Key`, `Authorization: crux`, etc.) are replayed verbatim
+from the widget on cruxclimbingcenter.com — they are public, not secret.
+The response merges `bookings` and `calEvents`, normalizes each entry,
+and returns the week sorted by `startDT`. Frontend filters to the
+selected day in the user's view.
 
 ## License
 
-MIT License - Feel free to use and modify as needed!
+MIT.

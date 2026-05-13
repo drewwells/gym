@@ -1,17 +1,24 @@
-SERVICE=gym
-SERVICE_FILE=$(SERVICE).service
-SYSTEMD_DIR=/etc/systemd/system
+SERVICE       = gym
+SERVICE_FILE  = $(SERVICE).service
+USER_UNIT_DIR = $(HOME)/.config/systemd/user
 
-.PHONY: install-service deploy dev
+.PHONY: install-service deploy dev logs status
 
 install-service:
-	sudo cp $(SERVICE_FILE) $(SYSTEMD_DIR)/$(SERVICE_FILE)
-	sudo systemctl daemon-reload
-	sudo systemctl enable --now $(SERVICE)
+	mkdir -p $(USER_UNIT_DIR)
+	cp $(SERVICE_FILE) $(USER_UNIT_DIR)/$(SERVICE_FILE)
+	systemctl --user daemon-reload
+	systemctl --user enable --now $(SERVICE)
 
 deploy:
-	docker compose build
-	sudo systemctl restart $(SERVICE)
+	podman-compose build
+	systemctl --user restart $(SERVICE)
 
 dev:
 	PORT=8001 node server.js
+
+logs:
+	podman logs -f $(SERVICE)
+
+status:
+	systemctl --user status $(SERVICE) --no-pager
