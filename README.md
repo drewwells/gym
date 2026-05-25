@@ -66,11 +66,18 @@ https://widgets.api.prod.tilefive.com/cal
   ?startDT=...&endDT=...&locationId=2&page=1&pageSize=200
 ```
 
-Headers (`X-Api-Key`, `Authorization: crux`, etc.) are replayed verbatim
-from the widget on cruxclimbingcenter.com — they are public, not secret.
-The response merges `bookings` and `calEvents`, normalizes each entry,
-and returns the week sorted by `startDT`. Frontend filters to the
-selected day in the user's view.
+The widget endpoint requires an `X-Api-Key` header. That key is a public
+per-region constant baked into the Approach portal's SPA bundle, so the
+server **scrapes it at startup** instead of carrying it in the repo: it
+fetches `/schedule/embed` on `crux.portal.approach.app`, parses the
+content-hashed `/assets/app-*.js` URL out of the shell HTML, downloads
+that bundle, and extracts `widgetsApiKey["us-east-1"]`. The value is
+cached in memory; if Crux ever rotates the bundle and the upstream
+returns a 403, the wrapper re-scrapes and retries once. Other headers
+(`Authorization: crux`, Referer/Origin, etc.) are constants replayed
+from the browser widget. The response merges `bookings` and `calEvents`,
+normalizes each entry, and returns the week sorted by `startDT`.
+Frontend filters to the selected day in the user's view.
 
 ## License
 
