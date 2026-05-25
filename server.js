@@ -1,3 +1,4 @@
+const path = require('path');
 const express = require('express');
 
 const { GYMS, getGym, publicGym } = require('./gyms');
@@ -95,6 +96,16 @@ app.get('/api/availability', async (req, res) => {
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, today: todayInTz(), gyms: GYMS.length, cacheSize: weekCache.size });
+});
+
+// SPA fallback: deep links like /crunch-round-rock have no file on disk
+// (express.static above already served real assets and /api/* is handled by
+// the routes above), so serve index.html and let the client route to the gym.
+app.use((req, res, next) => {
+  if (req.method === 'GET' && !req.path.startsWith('/api/')) {
+    return res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  }
+  next();
 });
 
 app.listen(PORT, () => {

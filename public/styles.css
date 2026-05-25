@@ -118,6 +118,12 @@ header h1 {
   color: white;
 }
 
+.share-btn {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  font-size: 0.9rem;
+}
+
 .mode-hint {
   font-size: 0.85rem;
   color: #95a5a6;
