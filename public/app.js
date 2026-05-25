@@ -18,6 +18,7 @@ const els = {
   today: document.getElementById('todayBtn'),
   next: document.getElementById('nextDayBtn'),
   refresh: document.getElementById('refreshBtn'),
+  share: document.getElementById('shareBtn'),
   sourceLink: document.getElementById('sourceLink'),
   footerLink: document.getElementById('footerLink'),
 };
@@ -27,6 +28,7 @@ const weekCache = new Map(); // `${gymId}:${weekStart}` -> events payload
 let currentGymId = null;
 let currentMode = 'classes';
 let currentDate = null;
+let defaultGymId = null; // first live gym; fallback for unknown deep links
 
 init();
 
@@ -39,9 +41,12 @@ async function init() {
     currentGymId = els.gymSelect.value;
     currentDate = defaultViewDate(gymTz());
     syncSourceLinks();
+    pushUrl();
     render();
   });
   els.modeBtns.forEach((btn) => btn.addEventListener('click', () => setMode(btn.dataset.mode)));
+  els.share.addEventListener('click', copyLink);
+  window.addEventListener('popstate', () => { applyState(parseUrl()); render(); });
 
   try {
     const res = await fetch('/api/gyms');
@@ -54,11 +59,63 @@ async function init() {
   }
 
   const firstLive = [...gyms.values()].find((g) => g.status === 'live') || [...gyms.values()][0];
-  currentGymId = firstLive.id;
-  els.gymSelect.value = currentGymId;
-  currentDate = defaultViewDate(gymTz());
-  syncSourceLinks();
+  defaultGymId = firstLive.id;
+
+  applyState(parseUrl());
+  // Normalize the address bar to the canonical deep link for this gym/view.
+  history.replaceState({}, '', canonicalUrl());
   render();
+}
+
+// Read gym + view from the URL. Deep link shape: /<gymId> with an optional
+// ?view=open-floor (and ?gym= / ?date= still accepted as fallbacks).
+function parseUrl() {
+  const params = new URLSearchParams(location.search);
+  let id = decodeURIComponent(location.pathname.replace(/^\/+|\/+$/g, ''));
+  if (!id || !gyms.has(id)) id = params.get('gym') || '';
+  const view = params.get('view') === 'open-floor' ? 'open-floor' : 'classes';
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(params.get('date') || '') ? params.get('date') : null;
+  return { id, view, date };
+}
+
+// Apply a parsed URL state to the app (gym, mode, date) without touching
+// history. Unknown gyms fall back to the default.
+function applyState({ id, view, date }) {
+  currentGymId = id && gyms.has(id) ? id : defaultGymId;
+  currentMode = view;
+  els.modeBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.mode === currentMode));
+  els.gymSelect.value = currentGymId;
+  currentDate = date || defaultViewDate(gymTz());
+  syncSourceLinks();
+}
+
+// The shareable URL for the current gym + view. Date is intentionally left
+// out so a shared link always resolves to "today" for the recipient.
+function canonicalUrl() {
+  const q = currentMode === 'open-floor' ? '?view=open-floor' : '';
+  return `/${encodeURIComponent(currentGymId)}${q}`;
+}
+
+function pushUrl() {
+  history.pushState({}, '', canonicalUrl());
+}
+
+async function copyLink() {
+  const url = location.origin + canonicalUrl();
+  try {
+    await navigator.clipboard.writeText(url);
+    flashShare('Copied!');
+  } catch {
+    // Clipboard API can be blocked (e.g. non-HTTPS); fall back to a prompt.
+    window.prompt('Copy this link:', url);
+  }
+}
+
+function flashShare(text) {
+  const original = els.share.textContent;
+  els.share.textContent = text;
+  els.share.disabled = true;
+  setTimeout(() => { els.share.textContent = original; els.share.disabled = false; }, 1400);
 }
 
 function populatePicker(list) {
@@ -86,6 +143,7 @@ function setMode(mode) {
   if (mode === currentMode) return;
   currentMode = mode;
   els.modeBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.mode === mode));
+  pushUrl();
   render();
 }
 
