@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <g fill="none" stroke="#2c3e50" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <!-- carabiner body: rounded D, opening at the top-right -->
+    <path d="M24 7
+             Q 7 7 7 24
+             L 7 46
+             Q 7 58 21 58
+             L 43 58
+             Q 57 58 57 46
+             L 57 21
+             Q 57 7 43 7"/>
+    <!-- gate: diagonal stroke closing the top opening -->
+    <line x1="24" y1="7" x2="43" y2="13"/>
+    <!-- gate hinge dot -->
+    <circle cx="43" cy="13" r="2.2" fill="#2c3e50" stroke="none"/>
+  </g>
+</svg>
