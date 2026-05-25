@@ -10,15 +10,78 @@ const CRUX_TZ = 'America/Chicago';
 const WEEK_DAYS = 7;
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
-const CRUX_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:150.0) Gecko/20100101 Firefox/150.0',
-  Accept: 'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  Referer: 'https://crux.portal.approach.app/',
-  'X-Api-Key': 'OQ2z4Q3jSU1BW3y9dyfEW5FlEFu1ozIj7jE27qjy',
-  Origin: 'https://crux.portal.approach.app',
-  Authorization: 'crux',
-};
+const CRUX_PORTAL_ORIGIN = 'https://crux.portal.approach.app';
+const CRUX_EMBED_URL = `${CRUX_PORTAL_ORIGIN}/schedule/embed?categoryIds=4&locationIds=2`;
+const CRUX_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:150.0) Gecko/20100101 Firefox/150.0';
+
+function cruxHeaders(apiKey) {
+  return {
+    'User-Agent': CRUX_USER_AGENT,
+    Accept: 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    Referer: `${CRUX_PORTAL_ORIGIN}/`,
+    'X-Api-Key': apiKey,
+    Origin: CRUX_PORTAL_ORIGIN,
+    Authorization: 'crux',
+  };
+}
+
+// The X-Api-Key for widgets.api.prod.tilefive.com is a public per-region
+// constant baked into the Approach portal's SPA bundle. We scrape it at
+// startup rather than committing it to the repo. The bundle filename is
+// content-hashed and rotates on every Crux deploy, so we resolve it
+// indirectly: /schedule/embed serves the SPA shell (with a 403 body, but
+// the <script src="/assets/app-*.js"> tag is still there), then we fetch
+// that JS and extract widgetsApiKey["us-east-1"].
+let cachedApiKey = null;
+let inflightApiKey = null;
+
+async function fetchCruxApiKey() {
+  const embedRes = await axios.get(CRUX_EMBED_URL, {
+    headers: {
+      'User-Agent': CRUX_USER_AGENT,
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      Referer: 'https://www.cruxclimbingcenter.com/',
+    },
+    validateStatus: () => true,
+    timeout: 15000,
+  });
+  const bundleMatch = typeof embedRes.data === 'string'
+    && embedRes.data.match(/src="(\/assets\/app-[^"]+\.js)"/);
+  if (!bundleMatch) {
+    throw new Error(`could not find SPA bundle path in ${CRUX_EMBED_URL} (status ${embedRes.status})`);
+  }
+  const bundleUrl = CRUX_PORTAL_ORIGIN + bundleMatch[1];
+  const bundleRes = await axios.get(bundleUrl, {
+    headers: {
+      'User-Agent': CRUX_USER_AGENT,
+      Accept: '*/*',
+      Referer: CRUX_EMBED_URL,
+    },
+    timeout: 30000,
+  });
+  const keyMatch = bundleRes.data.match(/widgetsApiKey:\s*\{\s*"us-east-1"\s*:\s*"([^"]+)"/);
+  if (!keyMatch) {
+    throw new Error(`could not find widgetsApiKey["us-east-1"] in ${bundleUrl}`);
+  }
+  return keyMatch[1];
+}
+
+async function getCruxApiKey({ refresh = false } = {}) {
+  if (refresh) cachedApiKey = null;
+  if (cachedApiKey) return cachedApiKey;
+  if (!inflightApiKey) {
+    inflightApiKey = fetchCruxApiKey()
+      .then((key) => {
+        cachedApiKey = key;
+        console.log(`Crux X-Api-Key acquired (...${key.slice(-6)})`);
+        return key;
+      })
+      .finally(() => { inflightApiKey = null; });
+  }
+  return inflightApiKey;
+}
 
 app.use(express.static('public'));
 
@@ -80,6 +143,29 @@ function normalize(entry, source) {
   };
 }
 
+async function cruxGet(params) {
+  let apiKey = await getCruxApiKey();
+  try {
+    return await axios.get(CRUX_URL, {
+      params,
+      headers: cruxHeaders(apiKey),
+      timeout: 15000,
+    });
+  } catch (err) {
+    // 403 typically means the bundle (and possibly its key) rotated since
+    // we last scraped. Refresh once and retry.
+    if (err.response?.status === 403) {
+      apiKey = await getCruxApiKey({ refresh: true });
+      return axios.get(CRUX_URL, {
+        params,
+        headers: cruxHeaders(apiKey),
+        timeout: 15000,
+      });
+    }
+    throw err;
+  }
+}
+
 async function fetchWeek(weekStart) {
   const startUTC = chicagoMidnightUTC(weekStart);
   const endUTC = new Date(startUTC.getTime() + WEEK_DAYS * 24 * 60 * 60 * 1000 - 1);
@@ -90,11 +176,7 @@ async function fetchWeek(weekStart) {
     page: 1,
     pageSize: 200,
   };
-  const res = await axios.get(CRUX_URL, {
-    params,
-    headers: CRUX_HEADERS,
-    timeout: 15000,
-  });
+  const res = await cruxGet(params);
   const bookings = (res.data?.bookings ?? []).map((b) => normalize(b, 'booking'));
   const calEvents = (res.data?.calEvents ?? []).map((e) => normalize(e, 'event'));
   const events = [...bookings, ...calEvents].sort(
