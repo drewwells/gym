@@ -3,22 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crux Central Calendar</title>
+    <title>Gym Calendar</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Crux Central Calendar</h1>
+            <h1>Gym Calendar</h1>
             <p class="subtitle">
-                Today's classes &amp; events &middot;
-                <a href="https://www.cruxclimbingcenter.com/central-austin/calendar/"
-                   target="_blank" rel="noopener">View on Crux &#x2197;</a>
+                Class schedules &amp; open floor times &middot;
+                <a id="sourceLink" href="#" target="_blank" rel="noopener">View source &#x2197;</a>
             </p>
         </header>
 
         <main class="schedule-container">
+            <div class="toolbar">
+                <label class="gym-picker">
+                    <span class="visually-hidden">Gym</span>
+                    <select id="gymSelect"></select>
+                </label>
+                <div class="mode-toggle" role="group" aria-label="View mode">
+                    <button id="modeClasses" type="button" class="mode-btn is-active" data-mode="classes">Classes</button>
+                    <button id="modeOpenFloor" type="button" class="mode-btn" data-mode="open-floor">Open Floor</button>
+                </div>
+            </div>
+
             <div class="date-header">
                 <span id="dateHeader">Loading&hellip;</span>
             </div>
@@ -30,17 +40,15 @@
                 <button id="refreshBtn" type="button" class="btn-secondary">Refresh</button>
             </div>
 
+            <p id="modeHint" class="mode-hint" hidden></p>
+
             <div id="loadingIndicator" class="loading" hidden>Loading&hellip;</div>
             <div id="errorIndicator" class="error-message" hidden></div>
             <div id="eventList" class="event-list"></div>
         </main>
 
         <footer>
-            <p>
-                Source:
-                <a href="https://www.cruxclimbingcenter.com/central-austin/calendar/"
-                   target="_blank" rel="noopener">cruxclimbingcenter.com</a>
-            </p>
+            <p>Source: <a id="footerLink" href="#" target="_blank" rel="noopener">gym website</a></p>
         </footer>
     </div>
 

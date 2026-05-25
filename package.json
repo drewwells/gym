@@ -1,15 +1,17 @@
 {
-  "name": "crux-calendar",
+  "name": "gym-calendar",
   "version": "1.0.0",
-  "description": "Public viewer for the Crux Climbing Center (Central Austin) class calendar",
+  "description": "Multi-gym class calendar with an Open Floor view that finds when a studio room is free",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "node --test"
   },
   "keywords": [
+    "gym",
     "crux",
-    "climbing",
+    "crunch",
     "calendar",
     "schedule"
   ],
