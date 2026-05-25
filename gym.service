@@ -1,5 +1,5 @@
 [Unit]
-Description=Crux Climbing Calendar
+Description=Gym Class Calendar (multi-gym)
 After=network-online.target
 Wants=network-online.target
 
