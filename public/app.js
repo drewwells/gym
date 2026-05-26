@@ -479,7 +479,7 @@ function heroToday(day, s, nowMin, g) {
   if (s.kind === 'open') {
     return hero(
       'The floor is',
-      heroHead(accent('Available'), br(), 'for the next', br(), accent(durStr(s.remaining), true), '.'),
+      heroHead(accent('Available'), br(), 'for the next', br(), accent(durStr(s.remaining), true)),
       sub(`${short}'s ${room} is class-free until `, strong(fmt12Long(s.endsAt)), '.'),
       heroFooter(`Now · ${fmt12Long(nowMin)}`, fmt12Long(s.endsAt)),
     );
