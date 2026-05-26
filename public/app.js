@@ -1,153 +1,145 @@
-// Multi-gym calendar with two views: "Classes" (the schedule) and "Open Floor"
-// (when a dance-suitable studio room is free). Gym list + per-gym config come
-// from /api/gyms; the server owns the open-floor gap math (/api/availability).
+// Open Floor — answer-first mobile view of when each gym's dance-suitable
+// studio is free. One screen: a top row (gym pill + product name), a swipeable
+// 7-day strip, a hero that answers "can I dance right now?", and the day's open
+// windows + blocking classes below it.
+//
+// The server owns the gap math: /api/gyms lists gyms, /api/availability returns
+// per-day rooms with classes + open gaps (ISO datetimes). This client converts
+// those instants to minutes-from-midnight in the gym's timezone and derives the
+// hero state from (today's gaps, today's classes, now).
 
-// After this local hour, default the initial view to tomorrow (today's classes
-// are mostly over). The "Today" button still jumps to today literally.
-const ROLLOVER_HOUR = 21;
+const STRIP_DAYS = 7;        // today + 6 days forward
+const SWIPE_THRESHOLD = 70;  // px to commit a day swipe
+const SWIPE_MS = 220;        // snap animation duration
+const TICK_MS = 60 * 1000;   // re-evaluate "now" on this cadence
+const STORE_KEY = 'openfloor:gym';
+const DEFAULT_TZ = 'America/Chicago';
 
 const els = {
-  gymSelect: document.getElementById('gymSelect'),
-  modeBtns: [...document.querySelectorAll('.mode-btn')],
-  dateHeader: document.getElementById('dateHeader'),
-  eventList: document.getElementById('eventList'),
-  loading: document.getElementById('loadingIndicator'),
-  error: document.getElementById('errorIndicator'),
-  modeHint: document.getElementById('modeHint'),
-  prev: document.getElementById('prevDayBtn'),
-  today: document.getElementById('todayBtn'),
-  next: document.getElementById('nextDayBtn'),
-  refresh: document.getElementById('refreshBtn'),
-  share: document.getElementById('shareBtn'),
+  stage: document.querySelector('.stage'),
+  gymBtn: document.getElementById('gymBtn'),
+  gymName: document.getElementById('gymName'),
+  dayStrip: document.getElementById('dayStrip'),
+  swipe: document.getElementById('swipe'),
+  track: document.getElementById('track'),
   sourceLink: document.getElementById('sourceLink'),
-  footerLink: document.getElementById('footerLink'),
 };
 
-const gyms = new Map(); // id -> public gym config
-const weekCache = new Map(); // `${gymId}:${weekStart}` -> events payload
+const gyms = new Map();      // id -> public gym config
+let cycleList = [];          // gyms reachable by tapping the pill
 let currentGymId = null;
-let currentMode = 'classes';
-let currentDate = null;
-let defaultGymId = null; // first live gym; fallback for unknown deep links
+let today = null;            // YYYY-MM-DD in the current gym's timezone
+let dayOffset = 0;           // 0 = today, up to STRIP_DAYS-1
+
+const dayCache = new Map();  // `${gymId}:${date}` -> parsed day | { error }
+const inflight = new Map();  // `${gymId}:${date}` -> Promise
+let tickTimer = null;
 
 init();
 
 async function init() {
-  els.prev.addEventListener('click', () => shiftDay(-1));
-  els.next.addEventListener('click', () => shiftDay(1));
-  els.today.addEventListener('click', () => { currentDate = todayInTz(gymTz()); render(); });
-  els.refresh.addEventListener('click', () => render({ refresh: true }));
-  els.gymSelect.addEventListener('change', () => {
-    currentGymId = els.gymSelect.value;
-    currentDate = defaultViewDate(gymTz());
-    syncSourceLinks();
-    pushUrl();
-    render();
-  });
-  els.modeBtns.forEach((btn) => btn.addEventListener('click', () => setMode(btn.dataset.mode)));
-  els.share.addEventListener('click', copyLink);
-  window.addEventListener('popstate', () => { applyState(parseUrl()); render(); });
-
+  let data;
   try {
     const res = await fetch('/api/gyms');
-    const data = await res.json();
-    for (const g of data.gyms) gyms.set(g.id, g);
-    populatePicker(data.gyms);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
   } catch (err) {
-    showError(`Could not load gyms: ${err.message}`);
-    return;
+    return showFatal(`Could not load gyms: ${err.message}`);
   }
 
-  const firstLive = [...gyms.values()].find((g) => g.status === 'live') || [...gyms.values()][0];
-  defaultGymId = firstLive.id;
+  for (const g of data.gyms) gyms.set(g.id, g);
+  cycleList = data.gyms.filter((g) => g.status !== 'coming-soon');
+  if (cycleList.length === 0) cycleList = data.gyms.slice();
+  const defaultId = (data.gyms.find((g) => g.status === 'live') || data.gyms[0]).id;
 
-  applyState(parseUrl());
-  // Normalize the address bar to the canonical deep link for this gym/view.
+  const fromUrl = gymFromUrl();
+  const fromStore = localStorage.getItem(STORE_KEY);
+  currentGymId = fromUrl
+    || (fromStore && gyms.has(fromStore) ? fromStore : null)
+    || defaultId;
+  today = todayInTz(gymTz());
   history.replaceState({}, '', canonicalUrl());
-  render();
+
+  els.gymBtn.addEventListener('click', cycleGym);
+  window.addEventListener('popstate', () => {
+    const id = gymFromUrl();
+    if (id && id !== currentGymId) selectGym(id, { push: false });
+  });
+  attachSwipe();
+
+  renderTopRow();
+  buildDayStrip();
+  renderSlides();
+  await ensureDayLoaded(0);
+  prefetchNeighbors(0);
+  startTick();
 }
 
-// Read gym + view from the URL. Deep link shape: /<gymId> with an optional
-// ?view=open-floor (and ?gym= / ?date= still accepted as fallbacks).
-function parseUrl() {
-  const params = new URLSearchParams(location.search);
-  let id = decodeURIComponent(location.pathname.replace(/^\/+|\/+$/g, ''));
-  if (!id || !gyms.has(id)) id = params.get('gym') || '';
-  const view = params.get('view') === 'open-floor' ? 'open-floor' : 'classes';
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(params.get('date') || '') ? params.get('date') : null;
-  return { id, view, date };
+// ---- gym selection ----
+
+function gym(id = currentGymId) { return gyms.get(id); }
+function gymTz(id = currentGymId) { return gym(id)?.tz || DEFAULT_TZ; }
+
+// "Round Rock" from "Crunch — Round Rock"; the whole name if there's no dash.
+function gymShort(g) {
+  const i = g.name.indexOf('—');
+  return i >= 0 ? g.name.slice(i + 1).trim() : g.name;
 }
 
-// Apply a parsed URL state to the app (gym, mode, date) without touching
-// history. Unknown gyms fall back to the default.
-function applyState({ id, view, date }) {
-  currentGymId = id && gyms.has(id) ? id : defaultGymId;
-  currentMode = view;
-  els.modeBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.mode === currentMode));
-  els.gymSelect.value = currentGymId;
-  currentDate = date || defaultViewDate(gymTz());
-  syncSourceLinks();
+// The dance-suitable room label, e.g. "Group Fitness" / "Studio".
+function gymRoom(g) {
+  return (g.danceRooms && g.danceRooms[0]) || 'studio';
 }
 
-// The shareable URL for the current gym + view. Date is intentionally left
-// out so a shared link always resolves to "today" for the recipient.
+function cycleGym() {
+  const idx = cycleList.findIndex((g) => g.id === currentGymId);
+  const next = cycleList[(idx + 1) % cycleList.length];
+  selectGym(next.id, { push: true });
+}
+
+function selectGym(id, { push }) {
+  if (!gyms.has(id)) return;
+  currentGymId = id;
+  localStorage.setItem(STORE_KEY, id);
+  today = todayInTz(gymTz());
+  // Keep the day the user is looking at — switching gyms shouldn't yank them
+  // back to today. dayOffset is relative to today, so the same calendar day is
+  // shown (gyms share a timezone). Clamp in case the strip length ever changes.
+  dayOffset = Math.max(0, Math.min(STRIP_DAYS - 1, dayOffset));
+  if (push) history.pushState({}, '', canonicalUrl());
+  renderTopRow();
+  buildDayStrip();
+  renderSlides();
+  ensureDayLoaded(dayOffset);
+  prefetchNeighbors(dayOffset);
+}
+
+function gymFromUrl() {
+  const id = decodeURIComponent(location.pathname.replace(/^\/+|\/+$/g, ''));
+  return gyms.has(id) ? id : null;
+}
+
 function canonicalUrl() {
-  const q = currentMode === 'open-floor' ? '?view=open-floor' : '';
-  return `/${encodeURIComponent(currentGymId)}${q}`;
+  return `/${encodeURIComponent(currentGymId)}`;
 }
 
-function pushUrl() {
-  history.pushState({}, '', canonicalUrl());
-}
-
-async function copyLink() {
-  const url = location.origin + canonicalUrl();
-  try {
-    await navigator.clipboard.writeText(url);
-    flashShare('Copied!');
-  } catch {
-    // Clipboard API can be blocked (e.g. non-HTTPS); fall back to a prompt.
-    window.prompt('Copy this link:', url);
-  }
-}
-
-function flashShare(text) {
-  const original = els.share.textContent;
-  els.share.textContent = text;
-  els.share.disabled = true;
-  setTimeout(() => { els.share.textContent = original; els.share.disabled = false; }, 1400);
-}
-
-function populatePicker(list) {
-  els.gymSelect.innerHTML = '';
-  for (const g of list) {
-    const opt = document.createElement('option');
-    opt.value = g.id;
-    opt.textContent = g.status === 'coming-soon' ? `${g.name} (coming soon)` : g.name;
-    opt.disabled = g.status === 'coming-soon';
-    els.gymSelect.appendChild(opt);
-  }
-}
-
-function gym() { return gyms.get(currentGymId); }
-function gymTz() { return gym()?.tz || 'America/Chicago'; }
-
-function syncSourceLinks() {
-  const url = gym()?.sourceUrl || '#';
+function renderTopRow() {
+  const g = gym();
+  els.gymName.textContent = gymShort(g);
+  const url = g.sourceUrl || '#';
   els.sourceLink.href = url;
-  els.footerLink.href = url;
-  els.footerLink.textContent = new URL(url).hostname.replace(/^www\./, '');
+  els.sourceLink.textContent = hostLabel(url);
 }
 
-function setMode(mode) {
-  if (mode === currentMode) return;
-  currentMode = mode;
-  els.modeBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.mode === mode));
-  pushUrl();
-  render();
+function hostLabel(url) {
+  try {
+    return `${new URL(url).hostname.replace(/^www\./, '')} ↗`;
+  } catch {
+    return 'source ↗';
+  }
 }
 
-// ---- date helpers (per-gym timezone) ----
+// ---- date + time helpers (per-gym timezone) ----
 
 function todayInTz(tz) {
   return new Intl.DateTimeFormat('en-CA', {
@@ -155,16 +147,24 @@ function todayInTz(tz) {
   }).format(new Date());
 }
 
-function hourInTz(tz) {
-  return Number(new Intl.DateTimeFormat('en-US', {
-    timeZone: tz, hour12: false, hour: '2-digit',
-  }).format(new Date())) % 24;
+// Minute-of-day (0..1439) right now in the given timezone.
+function nowMinutesInTz(tz) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit',
+  }).formatToParts(new Date());
+  const h = Number(parts.find((p) => p.type === 'hour').value) % 24;
+  const m = Number(parts.find((p) => p.type === 'minute').value);
+  return h * 60 + m;
 }
 
-function defaultViewDate(tz) {
-  const today = todayInTz(tz);
-  if (hourInTz(tz) < ROLLOVER_HOUR) return today;
-  return addDays(today, 1);
+// Minute-of-day of an ISO instant, read in the gym's timezone.
+function isoToMinutes(iso, tz) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit',
+  }).formatToParts(new Date(iso));
+  const h = Number(parts.find((p) => p.type === 'hour').value) % 24;
+  const m = Number(parts.find((p) => p.type === 'minute').value);
+  return h * 60 + m;
 }
 
 function addDays(yyyy_mm_dd, delta) {
@@ -174,252 +174,520 @@ function addDays(yyyy_mm_dd, delta) {
   return dt.toISOString().slice(0, 10);
 }
 
-function shiftDay(delta) {
-  currentDate = addDays(currentDate, delta);
-  render();
-}
-
-function formatDayHeader(yyyy_mm_dd) {
+function dateParts(yyyy_mm_dd) {
   const [y, m, d] = yyyy_mm_dd.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-  }).format(dt);
+  const fmt = (opt) => new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', ...opt }).format(dt);
+  return {
+    dowShort: fmt({ weekday: 'short' }).toUpperCase().slice(0, 3),
+    dowLong: fmt({ weekday: 'long' }),
+    month: fmt({ month: 'short' }),
+    dom: d,
+  };
 }
 
-function formatTime(iso) {
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: gymTz(), hour: 'numeric', minute: '2-digit',
-  }).format(new Date(iso));
+// Compact 12h: "6AM", "8:15PM".
+function fmt12(min) {
+  const h = Math.floor(min / 60), m = min % 60;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hh = ((h + 11) % 12) + 1;
+  return m === 0 ? `${hh}${ampm}` : `${hh}:${String(m).padStart(2, '0')}${ampm}`;
 }
 
-function formatHHMM(hhmm) {
-  const [h, m] = hhmm.split(':').map(Number);
-  const dt = new Date(Date.UTC(2000, 0, 1, h, m));
-  return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', hour: 'numeric', minute: '2-digit' }).format(dt);
+// Spaced 12h: "5:30 PM", "11:47 AM".
+function fmt12Long(min) {
+  const h = Math.floor(min / 60), m = min % 60;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hh = ((h + 11) % 12) + 1;
+  return `${hh}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-function stripHtml(html) {
-  if (!html) return '';
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  return (tmp.textContent || tmp.innerText || '').replace(/\s+/g, ' ').trim();
-}
-
-function humanDuration(min) {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
+function durStr(min) {
+  const h = Math.floor(min / 60), m = min % 60;
   if (h && m) return `${h}h ${m}m`;
   if (h) return `${h}h`;
   return `${m}m`;
 }
 
-// ---- rendering ----
-
-function showError(msg) {
-  els.loading.hidden = true;
-  els.error.hidden = false;
-  els.error.textContent = msg;
-}
-
-async function render({ refresh = false } = {}) {
-  els.dateHeader.textContent = formatDayHeader(currentDate);
-  els.error.hidden = true;
-  els.error.textContent = '';
-
-  const g = gym();
-  if (g && g.status === 'coming-soon') {
-    els.modeHint.hidden = true;
-    renderNotice(`${g.name} hasn't opened yet — schedule coming soon.`);
-    return;
-  }
-
-  if (currentMode === 'open-floor') return renderOpenFloor({ refresh });
-  return renderClasses({ refresh });
-}
-
-async function renderClasses({ refresh }) {
-  const g = gym();
-  els.modeHint.hidden = false;
-  els.modeHint.textContent = `All classes at ${g.name} for this day.`;
-
-  let payload = !refresh ? findCachedWeek(currentDate) : null;
-  if (!payload) {
-    els.loading.hidden = false;
-    els.eventList.innerHTML = '';
-    try {
-      payload = await fetchWeek(currentDate, refresh);
-    } catch (err) {
-      return showError(`Could not load classes: ${err.message}`);
-    }
-    els.loading.hidden = true;
-  }
-
-  const dayEvents = (payload.events || []).filter((e) => e.occurrenceDate === currentDate);
-  if (dayEvents.length === 0) return renderNotice('No classes scheduled for this day.');
-  els.eventList.innerHTML = '';
-  for (const ev of dayEvents) els.eventList.appendChild(buildClassItem(ev));
-}
-
-async function renderOpenFloor({ refresh }) {
-  const g = gym();
-  els.loading.hidden = false;
-  els.eventList.innerHTML = '';
-  let data;
-  try {
-    const url = `/api/availability?gym=${encodeURIComponent(currentGymId)}&date=${currentDate}${refresh ? '&refresh=1' : ''}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    data = await res.json();
-  } catch (err) {
-    return showError(`Could not load open floor: ${err.message}`);
-  }
-  els.loading.hidden = true;
-
-  els.modeHint.hidden = false;
-  els.modeHint.textContent =
-    `Open floor = the studio is class-free between ${formatHHMM(data.window.start)} and ${formatHHMM(data.window.end)}, gaps of ${data.minGapMinutes}m+.`;
-
-  els.eventList.innerHTML = '';
-  for (const room of data.rooms) {
-    els.eventList.appendChild(buildRoomHeader(room));
-    if (room.gaps.length === 0) {
-      els.eventList.appendChild(buildNotice(`No open floor in ${room.room} today.`));
-      continue;
-    }
-    for (const gap of room.gaps) els.eventList.appendChild(buildGapItem(gap));
-  }
-}
-
-function renderNotice(text) {
-  els.loading.hidden = true;
-  els.eventList.innerHTML = '';
-  els.eventList.appendChild(buildNotice(text));
-}
-
-function buildNotice(text) {
-  const empty = document.createElement('div');
-  empty.className = 'empty-state';
-  empty.textContent = text;
-  return empty;
-}
-
-function buildClassItem(ev) {
-  const item = document.createElement('article');
-  item.className = 'event-item';
-
-  const time = document.createElement('div');
-  time.className = 'event-time';
-  time.textContent = `${formatTime(ev.startDT)} – ${formatTime(ev.endDT)}`;
-  item.appendChild(time);
-
-  const body = document.createElement('div');
-  body.className = 'event-body';
-
-  const name = document.createElement('h3');
-  name.className = 'event-name';
-  name.textContent = ev.name || '(unnamed class)';
-  body.appendChild(name);
-
-  if (ev.room) {
-    const badge = document.createElement('span');
-    badge.className = ev.danceSuitable ? 'room-badge room-badge--dance' : 'room-badge';
-    badge.textContent = ev.room;
-    name.appendChild(document.createTextNode(' '));
-    name.appendChild(badge);
-  }
-
-  const desc = stripHtml(ev.description);
-  if (desc) {
-    const p = document.createElement('p');
-    p.className = 'event-desc';
-    p.textContent = desc.length > 220 ? `${desc.slice(0, 217)}…` : desc;
-    body.appendChild(p);
-  }
-
-  const metaBits = [];
-  if (ev.instructors && ev.instructors.length) metaBits.push(ev.instructors.join(', '));
-  if (ev.seatsRemaining != null && ev.seatsTotal != null) {
-    metaBits.push(`${ev.seatsRemaining}/${ev.seatsTotal} spots left`);
-  }
-  if (metaBits.length) {
-    const meta = document.createElement('p');
-    meta.className = 'event-meta';
-    meta.textContent = metaBits.join(' · ');
-    body.appendChild(meta);
-  }
-  item.appendChild(body);
-
-  if (ev.deepLink) {
-    const link = document.createElement('a');
-    link.className = 'event-link';
-    link.href = ev.deepLink;
-    link.target = '_blank';
-    link.rel = 'noopener';
-    link.textContent = 'Details ↗';
-    item.appendChild(link);
-  }
-  return item;
-}
-
-function buildRoomHeader(room) {
-  const h = document.createElement('h2');
-  h.className = 'room-header';
-  h.textContent = room.room;
-  const sub = document.createElement('span');
-  sub.className = 'room-header__sub';
-  sub.textContent = room.classes.length
-    ? ` · ${room.classes.length} class${room.classes.length === 1 ? '' : 'es'} today`
-    : ' · no classes today';
-  h.appendChild(sub);
-  return h;
-}
-
-function buildGapItem(gap) {
-  const item = document.createElement('article');
-  item.className = 'event-item event-item--open';
-
-  const time = document.createElement('div');
-  time.className = 'event-time';
-  time.textContent = `${formatTime(gap.startDT)} – ${formatTime(gap.endDT)}`;
-  item.appendChild(time);
-
-  const body = document.createElement('div');
-  body.className = 'event-body';
-  const name = document.createElement('h3');
-  name.className = 'event-name';
-  name.textContent = 'Open floor';
-  body.appendChild(name);
-  item.appendChild(body);
-
-  const dur = document.createElement('span');
-  dur.className = 'duration-badge';
-  dur.textContent = humanDuration(gap.minutes);
-  item.appendChild(dur);
-  return item;
-}
-
 // ---- data ----
 
-function findCachedWeek(date) {
-  for (const [key, payload] of weekCache.entries()) {
-    if (!key.startsWith(`${currentGymId}:`)) continue;
-    if (date >= payload.weekStart && date <= maxDate(payload.events)) return payload;
+function cacheKey(date, id = currentGymId) { return `${id}:${date}`; }
+
+function getCached(date, id = currentGymId) { return dayCache.get(cacheKey(date, id)); }
+
+// Fetch + parse one day's availability, memoized per gym+date. Resolves to a
+// parsed day, or an { error } record (never rejects).
+function loadDay(date, id = currentGymId) {
+  const key = cacheKey(date, id);
+  if (dayCache.has(key)) return Promise.resolve(dayCache.get(key));
+  if (inflight.has(key)) return inflight.get(key);
+
+  const p = fetch(`/api/availability?gym=${encodeURIComponent(id)}&date=${date}`)
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then((data) => {
+      const parsed = parseDay(data, date, gymTz(id));
+      dayCache.set(key, parsed);
+      inflight.delete(key);
+      return parsed;
+    })
+    .catch((err) => {
+      const rec = { error: err.message, date };
+      dayCache.set(key, rec);
+      inflight.delete(key);
+      return rec;
+    });
+
+  inflight.set(key, p);
+  return p;
+}
+
+// Flatten the availability response (one entry per dance room — in practice a
+// single studio per gym) into sorted minute-based classes + gaps for the day.
+function parseDay(data, date, tz) {
+  const events = [];
+  const gaps = [];
+  for (const room of data.rooms || []) {
+    for (const c of room.classes || []) {
+      events.push({ name: c.name, start: isoToMinutes(c.startDT, tz), end: isoToMinutes(c.endDT, tz) });
+    }
+    for (const g of room.gaps || []) {
+      gaps.push({ start: isoToMinutes(g.startDT, tz), end: isoToMinutes(g.endDT, tz), minutes: g.minutes });
+    }
   }
-  return null;
+  events.sort((a, b) => a.start - b.start);
+  gaps.sort((a, b) => a.start - b.start);
+  return {
+    date,
+    ...dateParts(date),
+    events,
+    gaps,
+    totalOpenMin: gaps.reduce((s, g) => s + g.minutes, 0),
+  };
 }
 
-function maxDate(events) {
-  let max = '';
-  for (const e of events) if (e.occurrenceDate && e.occurrenceDate > max) max = e.occurrenceDate;
-  return max;
+// Load a day (if needed) and refresh any on-screen slide showing it. Skips
+// coming-soon gyms (no live schedule) and out-of-range offsets.
+async function ensureDayLoaded(offset) {
+  if (offset < 0 || offset > STRIP_DAYS - 1) return;
+  if (gym().status === 'coming-soon') return;
+  const date = addDays(today, offset);
+  if (getCached(date)) return;
+  const id = currentGymId;
+  await loadDay(date, id);
+  if (id === currentGymId) refreshSlide(offset);
 }
 
-async function fetchWeek(date, refresh) {
-  const url = `/api/events?gym=${encodeURIComponent(currentGymId)}&date=${date}${refresh ? '&refresh=1' : ''}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const payload = await res.json();
-  weekCache.set(`${currentGymId}:${payload.weekStart || date}`, payload);
-  return payload;
+function prefetchNeighbors(offset) {
+  ensureDayLoaded(offset - 1);
+  ensureDayLoaded(offset + 1);
+}
+
+// ---- day strip ----
+
+function buildDayStrip() {
+  els.dayStrip.innerHTML = '';
+  for (let i = 0; i < STRIP_DAYS; i++) {
+    const p = dateParts(addDays(today, i));
+    const chip = h('button', {
+      class: 'day-chip',
+      attrs: {
+        type: 'button', role: 'tab',
+        'aria-selected': String(i === dayOffset),
+        'aria-label': `${p.dowLong} ${p.month} ${p.dom}`,
+      },
+    },
+      h('div', { class: 'day-chip__dow', text: p.dowShort }),
+      h('div', { class: 'day-chip__dom', text: String(p.dom) }),
+    );
+    if (i === 0) chip.classList.add('is-today');
+    if (i === dayOffset) chip.classList.add('is-active');
+    chip.addEventListener('click', () => goToDay(i));
+    els.dayStrip.appendChild(chip);
+  }
+}
+
+function syncDayStrip() {
+  [...els.dayStrip.children].forEach((chip, i) => {
+    chip.classList.toggle('is-active', i === dayOffset);
+    chip.setAttribute('aria-selected', String(i === dayOffset));
+  });
+  const active = els.dayStrip.children[dayOffset];
+  if (active) active.scrollIntoView({ inline: 'center', block: 'nearest' });
+}
+
+function goToDay(offset) {
+  offset = Math.max(0, Math.min(STRIP_DAYS - 1, offset));
+  dayOffset = offset;
+  syncDayStrip();
+  renderSlides();
+  ensureDayLoaded(offset);
+  prefetchNeighbors(offset);
+}
+
+// ---- swipe deck ----
+
+// Rebuild the prev/cur/next slides centered on dayOffset, with the track reset
+// to its resting position (no animation).
+function renderSlides() {
+  els.track.style.transition = 'none';
+  els.track.style.transform = 'translateX(0)';
+  els.track.innerHTML = '';
+  for (const rel of [-1, 0, 1]) {
+    const offset = dayOffset + rel;
+    const slide = h('div', { class: 'slide' });
+    slide.style.left = `${rel * 100}%`;
+    slide.dataset.offset = String(offset);
+    fillSlide(slide, offset);
+    els.track.appendChild(slide);
+  }
+}
+
+function fillSlide(slide, offset) {
+  slide.innerHTML = '';
+  if (offset < 0 || offset > STRIP_DAYS - 1) {
+    slide.appendChild(h('div', { class: 'panel' })); // blank edge
+    return;
+  }
+  const rec = gym().status === 'coming-soon' ? null : getCached(addDays(today, offset));
+  slide.appendChild(buildPanel(rec, offset));
+}
+
+function refreshSlide(offset) {
+  for (const slide of els.track.children) {
+    if (Number(slide.dataset.offset) === offset) {
+      const top = slide.scrollTop;
+      fillSlide(slide, offset);
+      slide.scrollTop = top;
+    }
+  }
+}
+
+function attachSwipe() {
+  let startX = null, startY = null, captured = false, drag = 0;
+  const width = () => els.swipe.clientWidth || 1;
+
+  els.swipe.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    startX = e.clientX; startY = e.clientY; captured = false; drag = 0;
+    els.track.style.transition = 'none';
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (startX == null) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (!captured) {
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+        captured = true;
+      } else if (Math.abs(dy) > 8) {
+        startX = null; // vertical scroll — hand back to the browser
+        return;
+      } else {
+        return;
+      }
+    }
+    if (e.cancelable) e.preventDefault();
+    drag = dx;
+    els.track.style.transform = `translateX(${dx}px)`;
+  }, { passive: false });
+
+  const end = () => {
+    if (startX == null) return;
+    const dx = drag;
+    startX = null;
+    const w = width();
+    els.track.style.transition = `transform ${SWIPE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+    if (dx <= -SWIPE_THRESHOLD && dayOffset < STRIP_DAYS - 1) {
+      els.track.style.transform = `translateX(${-w}px)`;
+      window.setTimeout(() => commitSwipe(dayOffset + 1), SWIPE_MS);
+    } else if (dx >= SWIPE_THRESHOLD && dayOffset > 0) {
+      els.track.style.transform = `translateX(${w}px)`;
+      window.setTimeout(() => commitSwipe(dayOffset - 1), SWIPE_MS);
+    } else {
+      els.track.style.transform = 'translateX(0)';
+    }
+    drag = 0;
+  };
+
+  window.addEventListener('pointerup', end);
+  window.addEventListener('pointercancel', end);
+}
+
+function commitSwipe(offset) {
+  dayOffset = Math.max(0, Math.min(STRIP_DAYS - 1, offset));
+  syncDayStrip();
+  renderSlides();
+  ensureDayLoaded(dayOffset);
+  prefetchNeighbors(dayOffset);
+}
+
+// ---- panel rendering ----
+
+function buildPanel(rec, offset) {
+  const panel = h('div', { class: 'panel' });
+  const g = gym();
+
+  if (g.status === 'coming-soon') {
+    panel.appendChild(comingSoonHero(g));
+    return panel;
+  }
+  if (!rec) {
+    panel.appendChild(messageHero('Reading the schedule', 'One sec'));
+    return panel;
+  }
+  if (rec.error) {
+    panel.appendChild(errorHero(rec, offset));
+    return panel;
+  }
+
+  const isToday = offset === 0;
+  const nowMin = nowMinutesInTz(gymTz());
+  if (isToday) {
+    const state = nowState(rec, nowMin);
+    panel.appendChild(heroToday(rec, state, nowMin, g));
+    panel.appendChild(buildList(rec, state, nowMin, true));
+  } else {
+    panel.appendChild(heroOther(rec));
+    panel.appendChild(buildList(rec, null, nowMin, false));
+  }
+  return panel;
+}
+
+// Classify "now" against today's gaps + classes.
+function nowState(day, t) {
+  for (const g of day.gaps) {
+    if (t >= g.start && t < g.end) return { kind: 'open', endsAt: g.end, remaining: g.end - t };
+  }
+  for (const e of day.events) {
+    if (t >= e.start && t < e.end) {
+      const nextGap = day.gaps.find((g) => g.start >= e.end);
+      return { kind: 'inClass', cls: e, until: e.end, nextGap };
+    }
+  }
+  const nextGap = day.gaps.find((g) => g.start > t);
+  if (nextGap) return { kind: 'upcoming', nextGap };
+  return { kind: 'doneForDay' };
+}
+
+function heroToday(day, s, nowMin, g) {
+  const short = gymShort(g);
+  const room = gymRoom(g).toLowerCase();
+
+  if (s.kind === 'open') {
+    return hero(
+      'The floor is',
+      heroHead(accent('Open'), br(), 'for the next', br(), accent(durStr(s.remaining), true), '.'),
+      sub(`${short}'s ${room} is class-free until `, strong(fmt12Long(s.endsAt)), '.'),
+      heroFooter(`Now · ${fmt12Long(nowMin)}`, fmt12Long(s.endsAt)),
+    );
+  }
+  if (s.kind === 'inClass') {
+    const left = s.until - nowMin;
+    return hero(
+      'Right now · floor in use',
+      heroHead(accent(s.cls.name), br(), `for ${durStr(left)} more.`),
+      s.nextGap
+        ? sub('Floor opens at ', strong(fmt12Long(s.nextGap.start)), ` for ${durStr(s.nextGap.minutes)}.`)
+        : sub('No more open windows today — see tomorrow below.'),
+      heroFooter('In session', `ends ${fmt12(s.until)}`),
+    );
+  }
+  if (s.kind === 'upcoming') {
+    return hero(
+      'Floor opens in',
+      heroHead(accent(durStr(s.nextGap.start - nowMin)), ',', br(), `at ${fmt12(s.nextGap.start)}.`),
+      sub('First open window runs until ', strong(fmt12Long(s.nextGap.end)), '.'),
+    );
+  }
+
+  // doneForDay — preview tomorrow's first window.
+  const tomorrow = addDays(today, 1);
+  const tRec = getCached(tomorrow);
+  const known = tRec && !tRec.error;
+  if (!known) loadDay(tomorrow).then(() => refreshSlide(0));
+  const tFirst = known ? tRec.gaps[0] : null;
+
+  let subEl;
+  if (tFirst) subEl = sub(strong('Tomorrow'), ' opens at ', strong(fmt12Long(tFirst.start)), ` for ${durStr(tFirst.minutes)}.`);
+  else if (known) subEl = sub("Tomorrow's studio is fully booked.");
+  else subEl = sub("Checking tomorrow's schedule…");
+
+  const node = hero(
+    "That's a wrap on today",
+    heroHead("Floor's ", accent('done'), br(), 'for tonight.'),
+    subEl,
+  );
+  if (tFirst) {
+    const btn = h('button', { class: 'peek-btn', text: 'See tomorrow →', attrs: { type: 'button' } });
+    btn.addEventListener('click', () => goToDay(1));
+    node.appendChild(btn);
+  }
+  return node;
+}
+
+function heroOther(day) {
+  const n = day.gaps.length;
+  return hero(
+    `${day.dowLong} · ${day.month} ${day.dom}`,
+    heroHead(accent(durStr(day.totalOpenMin)), ' open', br(), 'across ', em(String(n)), ` ${n === 1 ? 'window' : 'windows'}.`),
+    sub(`${day.events.length} ${day.events.length === 1 ? 'class' : 'classes'} on the floor.`),
+  );
+}
+
+function comingSoonHero(g) {
+  return hero(
+    gymShort(g),
+    heroHead('Opening ', accent('soon'), '.'),
+    sub("This gym's schedule isn't live yet — check back once it opens."),
+  );
+}
+
+function messageHero(headText, eyebrowText) {
+  return hero(eyebrowText, heroHead(accent(headText)));
+}
+
+function errorHero(rec, offset) {
+  const node = hero(
+    "Couldn't reach the schedule",
+    heroHead('Hmm', accent('.')),
+    sub(rec.error || 'Something went wrong.'),
+  );
+  const btn = h('button', { class: 'peek-btn', text: 'Try again', attrs: { type: 'button' } });
+  btn.addEventListener('click', () => {
+    dayCache.delete(cacheKey(rec.date));
+    refreshSlide(offset);
+    ensureDayLoaded(offset);
+  });
+  node.appendChild(btn);
+  return node;
+}
+
+function buildList(day, s, nowMin, isToday) {
+  const list = h('div', { class: 'list' });
+
+  // Which gaps to show: today filters to what's still ahead; other days show all.
+  let gaps = day.gaps;
+  if (isToday && s) {
+    if (s.kind === 'open') gaps = day.gaps.filter((g) => g.start > s.endsAt);
+    else if (s.kind === 'inClass') gaps = day.gaps.filter((g) => g.start > s.until);
+    else if (s.kind === 'upcoming') gaps = day.gaps.filter((g) => g.start >= s.nextGap.start);
+    else if (s.kind === 'doneForDay') gaps = [];
+  }
+
+  if (isToday && s && s.kind === 'open' && gaps.length) list.appendChild(sectionTitle('Later today'));
+  else if (isToday && s && s.kind === 'inClass' && gaps.length) list.appendChild(sectionTitle('After this class'));
+  else if (!isToday && day.gaps.length) list.appendChild(sectionTitle('Open windows'));
+
+  if (!gaps.length && day.events.length === 0) {
+    list.appendChild(h('div', { class: 'empty', text: "Studio's quiet — nothing on the books." }));
+  } else {
+    for (const g of gaps) list.appendChild(windowRow(g));
+  }
+
+  if (day.events.length) {
+    list.appendChild(sectionTitle('Classes blocking the floor', true));
+    for (const e of day.events) {
+      const live = isToday && nowMin >= e.start && nowMin < e.end;
+      list.appendChild(classRow(e, live));
+    }
+  }
+  return list;
+}
+
+function windowRow(g) {
+  return h('div', { class: 'window-row' },
+    h('div', {},
+      h('div', { class: 'window-time', text: `${fmt12(g.start)} – ${fmt12(g.end)}` }),
+      h('div', { class: 'window-meta', text: 'Open · between classes' }),
+    ),
+    h('div', { class: 'window-dur', text: durStr(g.minutes) }),
+  );
+}
+
+function classRow(e, live) {
+  const name = h('span', {}, e.name);
+  if (live) {
+    name.appendChild(h('span', {
+      class: 'live-badge', text: 'Live', attrs: { 'aria-label': 'currently in session' },
+    }));
+  }
+  return h('div', { class: `class-row${live ? ' is-live' : ''}` },
+    name,
+    h('span', { class: 'class-row-time', text: `${fmt12(e.start)} – ${fmt12(e.end)}` }),
+  );
+}
+
+// ---- small DOM builders ----
+
+function hero(eyebrowText, headEl, subEl, footerEl) {
+  const node = h('div', { class: 'hero' },
+    h('div', { class: 'hero-eyebrow', text: eyebrowText }),
+    headEl,
+  );
+  if (subEl) node.appendChild(subEl);
+  if (footerEl) node.appendChild(footerEl);
+  return node;
+}
+
+function heroHead(...kids) { return h('h1', { class: 'hero-head' }, ...kids); }
+function sub(...kids) { return h('p', { class: 'hero-sub' }, ...kids); }
+function heroFooter(leftText, numText) {
+  return h('div', { class: 'hero-footer' },
+    h('span', { text: leftText }),
+    h('span', { class: 'hero-footer-num', text: numText }),
+  );
+}
+function sectionTitle(text, spaced) {
+  return h('div', { class: `section-title${spaced ? ' section-title--spaced' : ''}`, text });
+}
+function accent(text, nowrap) { return h('span', { class: `accent${nowrap ? ' nowrap' : ''}`, text }); }
+function em(text) { return h('em', { text }); }
+function strong(text) { return h('strong', { text }); }
+function br() { return document.createElement('br'); }
+
+// Minimal hyperscript: h(tag, { class, text, attrs }, ...children). String
+// children become text nodes; class names / class content go in via textContent
+// so gym/class names can't inject markup.
+function h(tag, opts = {}, ...kids) {
+  const node = document.createElement(tag);
+  if (opts.class) node.className = opts.class;
+  if (opts.text != null) node.textContent = opts.text;
+  if (opts.attrs) for (const k in opts.attrs) node.setAttribute(k, opts.attrs[k]);
+  for (const kid of kids) {
+    if (kid == null) continue;
+    node.appendChild(typeof kid === 'string' ? document.createTextNode(kid) : kid);
+  }
+  return node;
+}
+
+// ---- "now" ticking + fatal errors ----
+
+function startTick() {
+  clearInterval(tickTimer);
+  tickTimer = setInterval(() => {
+    if (document.hidden || dayOffset !== 0) return;
+    const t = todayInTz(gymTz());
+    if (t !== today) { // crossed midnight — rebuild around the new today
+      today = t;
+      buildDayStrip();
+      renderSlides();
+      ensureDayLoaded(0);
+      prefetchNeighbors(0);
+      return;
+    }
+    refreshSlide(0);
+  }, TICK_MS);
+}
+
+function showFatal(msg) {
+  els.track.innerHTML = '';
+  const slide = h('div', { class: 'slide' });
+  slide.style.left = '0';
+  slide.appendChild(h('div', { class: 'panel' },
+    hero("Couldn't load", heroHead('Hmm', accent('.')), sub(msg)),
+  ));
+  els.track.appendChild(slide);
 }

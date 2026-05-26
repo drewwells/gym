@@ -1,58 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gym Calendar</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <link rel="stylesheet" href="/styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#f3ece0">
+  <title>Open Floor</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Gym Calendar</h1>
-            <p class="subtitle">
-                Class schedules &amp; open floor times &middot;
-                <a id="sourceLink" href="#" target="_blank" rel="noopener">View source &#x2197;</a>
-            </p>
-        </header>
+  <div class="stage">
+    <div class="shell">
+      <div class="top-row">
+        <button id="gymBtn" type="button" class="gym-btn" aria-label="Change gym">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="gymName" class="gym-name">&hellip;</span>
+          <span class="caret" aria-hidden="true">&#9662;</span>
+        </button>
+        <span class="product">Open Floor</span>
+      </div>
 
-        <main class="schedule-container">
-            <div class="toolbar">
-                <label class="gym-picker">
-                    <span class="visually-hidden">Gym</span>
-                    <select id="gymSelect"></select>
-                </label>
-                <div class="mode-toggle" role="group" aria-label="View mode">
-                    <button id="modeClasses" type="button" class="mode-btn is-active" data-mode="classes">Classes</button>
-                    <button id="modeOpenFloor" type="button" class="mode-btn" data-mode="open-floor">Open Floor</button>
-                </div>
-                <button id="shareBtn" type="button" class="btn-secondary share-btn" title="Copy a link to this gym">🔗 Copy link</button>
-            </div>
+      <div id="dayStrip" class="day-strip" role="tablist" aria-label="Choose a day"></div>
 
-            <div class="date-header">
-                <span id="dateHeader">Loading&hellip;</span>
-            </div>
+      <div id="swipe" class="swipe">
+        <div id="track" class="track"></div>
+      </div>
 
-            <div class="date-controls">
-                <button id="prevDayBtn" type="button" class="btn-secondary">&larr; Prev</button>
-                <button id="todayBtn" type="button" class="btn-secondary">Today</button>
-                <button id="nextDayBtn" type="button" class="btn-secondary">Next &rarr;</button>
-                <button id="refreshBtn" type="button" class="btn-secondary">Refresh</button>
-            </div>
-
-            <p id="modeHint" class="mode-hint" hidden></p>
-
-            <div id="loadingIndicator" class="loading" hidden>Loading&hellip;</div>
-            <div id="errorIndicator" class="error-message" hidden></div>
-            <div id="eventList" class="event-list"></div>
-        </main>
-
-        <footer>
-            <p>Source: <a id="footerLink" href="#" target="_blank" rel="noopener">gym website</a></p>
-        </footer>
+      <div class="source">
+        <span>Source</span>
+        <a id="sourceLink" class="source-link" href="#" target="_blank" rel="noopener">&mdash;</a>
+      </div>
     </div>
+  </div>
 
-    <script src="/app.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>
