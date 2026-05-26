@@ -71,6 +71,32 @@ const GYMS = [
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.crunch.com/locations/northatx',
   },
+  {
+    id: 'lafitness-round-rock',
+    name: 'LA Fitness — Round Rock',
+    provider: 'lafitness',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { clubId: 1075 },
+    // LA Fitness exposes no room field; the lafitness provider synthesizes a
+    // single "Group Fitness Studio" from the class name (cycle/aqua excluded).
+    danceRooms: ['Group Fitness Studio'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.lafitness.com/Pages/clubhome.aspx?clubid=1075',
+  },
+  {
+    id: 'lafitness-anderson-lane',
+    name: 'LA Fitness — Anderson Lane',
+    provider: 'lafitness',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { clubId: 1035 },
+    danceRooms: ['Group Fitness Studio'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.lafitness.com/Pages/clubhome.aspx?clubid=1035',
+  },
 ];
 
 const byId = new Map(GYMS.map((g) => [g.id, g]));
