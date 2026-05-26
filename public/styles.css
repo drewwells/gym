@@ -1,7 +1,8 @@
-/* Open Floor — editorial, answer-first mobile view.
-   Cream + ink + a vermillion accent. Instrument Serif for display,
-   IBM Plex Sans for body, IBM Plex Mono for ticks. Ported from the
-   design prototype (design_handoff_open_floor) into vanilla CSS. */
+/* Open Floor — answer-first mobile view. "Bold display" type system:
+   Bricolage Grotesque (display + body, one variable family) + JetBrains Mono
+   for ticks. Cream + ink + a forest-green accent. Accent is signaled with
+   color only — no italic. Ported from the design prototype
+   (design_handoff_open_floor) into vanilla CSS. */
 
 :root {
   --paper: #f3ece0;
@@ -9,12 +10,12 @@
   --ink-soft: #3a3026;
   --muted: #6f655a;
   --muted-2: #8a7e6f;
-  --vermillion: #c84630;
+  --accent: #1f7a3d;
   --divider: #d8cdb9;
 
-  --sans: "IBM Plex Sans", system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, monospace;
-  --serif: "Instrument Serif", "Source Serif 4", Georgia, serif;
+  --display: "Bricolage Grotesque", system-ui, sans-serif;
+  --body: "Bricolage Grotesque", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -23,7 +24,7 @@ html, body { margin: 0; padding: 0; height: 100%; }
 body {
   background: var(--paper);
   color: var(--ink);
-  font-family: var(--sans);
+  font-family: var(--body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -95,7 +96,7 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 99px;
-  background: var(--vermillion);
+  background: var(--accent);
   flex: 0 0 auto;
 }
 
@@ -192,20 +193,19 @@ body {
 
 .hero-head {
   margin: 0;
-  font-family: var(--serif);
-  font-weight: 400;
-  font-size: 54px;
-  line-height: 1.02;
-  letter-spacing: -0.025em;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 48px;
+  line-height: 1;
+  letter-spacing: -0.04em;
   color: var(--ink);
   text-wrap: balance;
 }
 
-.hero-head em { font-style: italic; }
-
+/* Accent emphasis: color only, no italic. */
 .accent {
-  color: var(--vermillion);
-  font-style: italic;
+  color: var(--accent);
+  font-style: normal;
 }
 
 .hero-sub {
@@ -233,8 +233,9 @@ body {
 }
 
 .hero-footer-num {
-  font-family: var(--serif);
+  font-family: var(--display);
   font-size: 28px;
+  font-weight: 600;
   color: var(--ink);
 }
 
@@ -276,8 +277,9 @@ body {
 }
 
 .window-time {
-  font-family: var(--serif);
+  font-family: var(--display);
   font-size: 28px;
+  font-weight: 600;
   line-height: 1;
   letter-spacing: -0.01em;
   color: var(--ink);
@@ -325,7 +327,7 @@ body {
   margin-left: 8px;
   padding: 2px 6px;
   border-radius: 3px;
-  background: var(--vermillion);
+  background: var(--accent);
   color: var(--paper);
   font-family: var(--mono);
   font-size: 10px;
@@ -336,8 +338,8 @@ body {
 }
 
 .empty {
-  font-family: var(--serif);
-  font-style: italic;
+  font-family: var(--display);
+  font-weight: 500;
   font-size: 26px;
   line-height: 1.1;
   color: var(--muted);
@@ -358,6 +360,6 @@ body {
 }
 
 .source-link {
-  color: var(--vermillion);
+  color: var(--accent);
   text-decoration: none;
 }

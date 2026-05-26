@@ -479,7 +479,7 @@ function heroToday(day, s, nowMin, g) {
   if (s.kind === 'open') {
     return hero(
       'The floor is',
-      heroHead(accent('Open'), br(), 'for the next', br(), accent(durStr(s.remaining), true), '.'),
+      heroHead(accent('Available'), br(), 'for the next', br(), accent(durStr(s.remaining), true), '.'),
       sub(`${short}'s ${room} is class-free until `, strong(fmt12Long(s.endsAt)), '.'),
       heroFooter(`Now · ${fmt12Long(nowMin)}`, fmt12Long(s.endsAt)),
     );
@@ -491,7 +491,7 @@ function heroToday(day, s, nowMin, g) {
       heroHead(accent(s.cls.name), br(), `for ${durStr(left)} more.`),
       s.nextGap
         ? sub('Floor opens at ', strong(fmt12Long(s.nextGap.start)), ` for ${durStr(s.nextGap.minutes)}.`)
-        : sub('No more open windows today — see tomorrow below.'),
+        : sub('No more available windows today — see tomorrow below.'),
       heroFooter('In session', `ends ${fmt12(s.until)}`),
     );
   }
@@ -499,7 +499,7 @@ function heroToday(day, s, nowMin, g) {
     return hero(
       'Floor opens in',
       heroHead(accent(durStr(s.nextGap.start - nowMin)), ',', br(), `at ${fmt12(s.nextGap.start)}.`),
-      sub('First open window runs until ', strong(fmt12Long(s.nextGap.end)), '.'),
+      sub('First available window runs until ', strong(fmt12Long(s.nextGap.end)), '.'),
     );
   }
 
@@ -532,7 +532,7 @@ function heroOther(day) {
   const n = day.gaps.length;
   return hero(
     `${day.dowLong} · ${day.month} ${day.dom}`,
-    heroHead(accent(durStr(day.totalOpenMin)), ' open', br(), 'across ', em(String(n)), ` ${n === 1 ? 'window' : 'windows'}.`),
+    heroHead(accent(durStr(day.totalOpenMin)), ' available', br(), 'across ', accent(String(n)), ` ${n === 1 ? 'window' : 'windows'}.`),
     sub(`${day.events.length} ${day.events.length === 1 ? 'class' : 'classes'} on the floor.`),
   );
 }
@@ -579,7 +579,7 @@ function buildList(day, s, nowMin, isToday) {
 
   if (isToday && s && s.kind === 'open' && gaps.length) list.appendChild(sectionTitle('Later today'));
   else if (isToday && s && s.kind === 'inClass' && gaps.length) list.appendChild(sectionTitle('After this class'));
-  else if (!isToday && day.gaps.length) list.appendChild(sectionTitle('Open windows'));
+  else if (!isToday && day.gaps.length) list.appendChild(sectionTitle('Available windows'));
 
   if (!gaps.length && day.events.length === 0) {
     list.appendChild(h('div', { class: 'empty', text: "Studio's quiet — nothing on the books." }));
@@ -601,7 +601,7 @@ function windowRow(g) {
   return h('div', { class: 'window-row' },
     h('div', {},
       h('div', { class: 'window-time', text: `${fmt12(g.start)} – ${fmt12(g.end)}` }),
-      h('div', { class: 'window-meta', text: 'Open · between classes' }),
+      h('div', { class: 'window-meta', text: 'Available · between classes' }),
     ),
     h('div', { class: 'window-dur', text: durStr(g.minutes) }),
   );
@@ -644,7 +644,6 @@ function sectionTitle(text, spaced) {
   return h('div', { class: `section-title${spaced ? ' section-title--spaced' : ''}`, text });
 }
 function accent(text, nowrap) { return h('span', { class: `accent${nowrap ? ' nowrap' : ''}`, text }); }
-function em(text) { return h('em', { text }); }
 function strong(text) { return h('strong', { text }); }
 function br() { return document.createElement('br'); }
 
