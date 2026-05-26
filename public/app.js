@@ -488,7 +488,7 @@ function heroToday(day, s, nowMin, g) {
     const left = s.until - nowMin;
     return hero(
       'Right now · floor in use',
-      heroHead(accent(s.cls.name), br(), `for ${durStr(left)} more.`),
+      heroHead(accent(s.cls.name), br(), `for ${durStr(left)} more`),
       s.nextGap
         ? sub('Floor opens at ', strong(fmt12Long(s.nextGap.start)), ` for ${durStr(s.nextGap.minutes)}.`)
         : sub('No more available windows today — see tomorrow below.'),
@@ -498,7 +498,7 @@ function heroToday(day, s, nowMin, g) {
   if (s.kind === 'upcoming') {
     return hero(
       'Floor opens in',
-      heroHead(accent(durStr(s.nextGap.start - nowMin)), ',', br(), `at ${fmt12(s.nextGap.start)}.`),
+      heroHead(accent(durStr(s.nextGap.start - nowMin)), ',', br(), `at ${fmt12(s.nextGap.start)}`),
       sub('First available window runs until ', strong(fmt12Long(s.nextGap.end)), '.'),
     );
   }
@@ -517,7 +517,7 @@ function heroToday(day, s, nowMin, g) {
 
   const node = hero(
     "That's a wrap on today",
-    heroHead("Floor's ", accent('done'), br(), 'for tonight.'),
+    heroHead("Floor's ", accent('done'), br(), 'for tonight'),
     subEl,
   );
   if (tFirst) {
@@ -532,7 +532,7 @@ function heroOther(day) {
   const n = day.gaps.length;
   return hero(
     `${day.dowLong} · ${day.month} ${day.dom}`,
-    heroHead(accent(durStr(day.totalOpenMin)), ' available', br(), 'across ', accent(String(n)), ` ${n === 1 ? 'window' : 'windows'}.`),
+    heroHead(accent(durStr(day.totalOpenMin)), ' available', br(), 'across ', accent(String(n)), ` ${n === 1 ? 'window' : 'windows'}`),
     sub(`${day.events.length} ${day.events.length === 1 ? 'class' : 'classes'} on the floor.`),
   );
 }
@@ -540,7 +540,7 @@ function heroOther(day) {
 function comingSoonHero(g) {
   return hero(
     gymShort(g),
-    heroHead('Opening ', accent('soon'), '.'),
+    heroHead('Opening ', accent('soon')),
     sub("This gym's schedule isn't live yet — check back once it opens."),
   );
 }
