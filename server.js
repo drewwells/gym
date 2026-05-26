@@ -7,8 +7,9 @@ const { computeOpenFloor } = require('./lib/availability');
 
 const crux = require('./providers/crux');
 const crunch = require('./providers/crunch');
+const lafitness = require('./providers/lafitness');
 
-const PROVIDERS = { crux, crunch };
+const PROVIDERS = { crux, crunch, lafitness };
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
