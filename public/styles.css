@@ -11,7 +11,10 @@
   --muted: #6f655a;
   --muted-2: #8a7e6f;
   --accent: #1f7a3d;
+  --accent-tint: rgba(31, 122, 61, 0.08);
   --divider: #d8cdb9;
+  --handle: #cabea7;
+  --scrim: rgba(28, 24, 20, 0.45);
 
   --display: "Bricolage Grotesque", system-ui, sans-serif;
   --body: "Bricolage Grotesque", system-ui, sans-serif;
@@ -62,47 +65,87 @@ body {
   overflow: hidden;
 }
 
-/* ---- top row: gym pill + product name ---- */
+/* ---- top row: tappable identity (swatch + brand + short) + product label ---- */
 .top-row {
   padding: 52px 22px 4px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-  white-space: nowrap;
 }
 
 .gym-btn {
   border: none;
   background: transparent;
   padding: 0;
+  margin: 0;
   font: inherit;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--ink);
+  text-align: left;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+}
+
+.gym-swatch {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--paper);
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.gym-btn-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+
+.gym-brand {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.gym-short-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   white-space: nowrap;
 }
 
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 99px;
-  background: var(--accent);
-  flex: 0 0 auto;
+.gym-short {
+  font-family: var(--body);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
 }
 
-.caret { opacity: 0.4; }
+.caret {
+  font-size: 13px;
+  color: var(--ink);
+  opacity: 0.45;
+}
 
-.product { color: var(--muted); }
+.product {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  padding-top: 8px;
+}
 
 /* ---- day strip ---- */
 .day-strip {
@@ -363,3 +406,169 @@ body {
   color: var(--accent);
   text-decoration: none;
 }
+
+/* ---- bottom-sheet gym picker ---- */
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  background: var(--scrim);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+
+.sheet-scrim.is-open { opacity: 1; }
+.sheet-scrim[hidden] { display: none !important; }
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  background: var(--paper);
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.18);
+  max-height: 78%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateY(100%);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sheet.is-open { transform: translateY(0); }
+.sheet[hidden] { display: none !important; }
+
+.sheet-handle {
+  width: 38px;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--handle);
+  margin: 10px auto 4px;
+}
+
+.sheet-head {
+  padding: 4px 22px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--divider);
+}
+
+.sheet-title {
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.sheet-close {
+  border: none;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 6px;
+}
+
+.sheet-list {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding-bottom: 18px;
+}
+
+.sheet-group-head {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 14px 22px 6px;
+}
+
+.sheet-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 12px 22px;
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  column-gap: 12px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.sheet-item.is-active { background: var(--accent-tint); }
+.sheet-item.is-disabled { cursor: default; opacity: 0.7; }
+
+.sheet-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--ink);
+  color: var(--paper);
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.sheet-item.is-active .sheet-swatch { background: var(--accent); }
+
+.sheet-name {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  min-width: 0;
+}
+
+.sheet-short {
+  font-family: var(--body);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sheet-hood {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.sheet-check {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sheet-soon {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* When the picker is open, lock body scroll so swipe deck below can't
+   intercept drags. */
+body.has-sheet-open { overflow: hidden; }
