@@ -17,10 +17,15 @@
   <div class="stage">
     <div class="shell">
       <div class="top-row">
-        <button id="gymBtn" type="button" class="gym-btn" aria-label="Change gym">
-          <span class="dot" aria-hidden="true"></span>
-          <span id="gymName" class="gym-name">&hellip;</span>
-          <span class="caret" aria-hidden="true">&#9662;</span>
+        <button id="gymBtn" type="button" class="gym-btn" aria-label="Change gym" aria-haspopup="dialog">
+          <span id="gymSwatch" class="gym-swatch" aria-hidden="true">&hellip;</span>
+          <span class="gym-btn-text">
+            <span id="gymBrand" class="gym-brand">&hellip;</span>
+            <span class="gym-short-line">
+              <span id="gymShort" class="gym-short">&hellip;</span>
+              <span class="caret" aria-hidden="true">&#9662;</span>
+            </span>
+          </span>
         </button>
         <span class="product">Open Floor</span>
       </div>
@@ -32,9 +37,20 @@
       </div>
 
       <div class="source">
-        <span>Source</span>
+        <span>Schedule source</span>
         <a id="sourceLink" class="source-link" href="#" target="_blank" rel="noopener">&mdash;</a>
       </div>
+    </div>
+
+    <!-- Bottom-sheet gym picker. Hidden until tapping the identity button. -->
+    <div id="sheetScrim" class="sheet-scrim" hidden></div>
+    <div id="sheet" class="sheet" role="dialog" aria-label="Choose a gym" aria-modal="true" hidden>
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-head">
+        <span class="sheet-title">Choose a gym</span>
+        <button id="sheetClose" type="button" class="sheet-close">Close</button>
+      </div>
+      <div id="sheetList" class="sheet-list"></div>
     </div>
   </div>
 

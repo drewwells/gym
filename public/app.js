@@ -1,12 +1,14 @@
 // Open Floor — answer-first mobile view of when each gym's dance-suitable
-// studio is free. One screen: a top row (gym pill + product name), a swipeable
-// 7-day strip, a hero that answers "can I dance right now?", and the day's open
-// windows + blocking classes below it.
+// studio is free. One screen: a top row (tappable identity + product name), a
+// swipeable 7-day strip, a hero that answers "can I dance right now?", and the
+// day's open windows + blocking classes below it. Tapping the identity opens a
+// bottom-sheet picker grouped by brand.
 //
-// The server owns the gap math: /api/gyms lists gyms, /api/availability returns
-// per-day rooms with classes + open gaps (ISO datetimes). This client converts
-// those instants to minutes-from-midnight in the gym's timezone and derives the
-// hero state from (today's gaps, today's classes, now).
+// The server owns the gap math: /api/gyms lists gyms (with brand/short/
+// neighborhood/room/sourceHost for the picker + hero copy); /api/availability
+// returns per-day rooms with classes + open gaps (ISO datetimes). This client
+// converts those instants to minutes-from-midnight in the gym's timezone and
+// derives the hero state from (today's gaps, today's classes, now).
 
 const STRIP_DAYS = 7;        // today + 6 days forward
 const SWIPE_THRESHOLD = 70;  // px to commit a day swipe
@@ -15,18 +17,33 @@ const TICK_MS = 60 * 1000;   // re-evaluate "now" on this cadence
 const STORE_KEY = 'openfloor:gym';
 const DEFAULT_TZ = 'America/Chicago';
 
+// Two-letter brand glyphs used on the swatches. Crunch vs Crux collide at
+// "C" so they get explicit two-letter marks (matches design handoff §
+// "Brand swatch glyphs"). Unknown brands fall back to their first letter.
+const BRAND_MARK = {
+  'Crunch': 'CR',
+  'LA Fitness': 'LA',
+  'Crux': 'CX',
+};
+
 const els = {
   stage: document.querySelector('.stage'),
   gymBtn: document.getElementById('gymBtn'),
-  gymName: document.getElementById('gymName'),
+  gymSwatch: document.getElementById('gymSwatch'),
+  gymBrand: document.getElementById('gymBrand'),
+  gymShort: document.getElementById('gymShort'),
   dayStrip: document.getElementById('dayStrip'),
   swipe: document.getElementById('swipe'),
   track: document.getElementById('track'),
   sourceLink: document.getElementById('sourceLink'),
+  sheet: document.getElementById('sheet'),
+  sheetScrim: document.getElementById('sheetScrim'),
+  sheetList: document.getElementById('sheetList'),
+  sheetClose: document.getElementById('sheetClose'),
 };
 
-const gyms = new Map();      // id -> public gym config
-let cycleList = [];          // gyms reachable by tapping the pill
+const gyms = new Map();      // id -> public gym config (registry order preserved in `gymOrder`)
+const gymOrder = [];         // ids in registry order, for brand-grouped picker rendering
 let currentGymId = null;
 let today = null;            // YYYY-MM-DD in the current gym's timezone
 let dayOffset = 0;           // 0 = today, up to STRIP_DAYS-1
@@ -47,9 +64,7 @@ async function init() {
     return showFatal(`Could not load gyms: ${err.message}`);
   }
 
-  for (const g of data.gyms) gyms.set(g.id, g);
-  cycleList = data.gyms.filter((g) => g.status !== 'coming-soon');
-  if (cycleList.length === 0) cycleList = data.gyms.slice();
+  for (const g of data.gyms) { gyms.set(g.id, g); gymOrder.push(g.id); }
   const defaultId = (data.gyms.find((g) => g.status === 'live') || data.gyms[0]).id;
 
   const fromUrl = gymFromUrl();
@@ -60,7 +75,13 @@ async function init() {
   today = todayInTz(gymTz());
   history.replaceState({}, '', canonicalUrl());
 
-  els.gymBtn.addEventListener('click', cycleGym);
+  els.gymBtn.addEventListener('click', openPicker);
+  els.sheetScrim.addEventListener('click', closePicker);
+  els.sheetClose.addEventListener('click', closePicker);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !els.sheet.hidden) closePicker();
+  });
+
   window.addEventListener('popstate', () => {
     const id = gymFromUrl();
     if (id && id !== currentGymId) selectGym(id, { push: false });
@@ -80,25 +101,20 @@ async function init() {
 function gym(id = currentGymId) { return gyms.get(id); }
 function gymTz(id = currentGymId) { return gym(id)?.tz || DEFAULT_TZ; }
 
-// "Round Rock" from "Crunch — Round Rock"; the whole name if there's no dash.
-function gymShort(g) {
-  const i = g.name.indexOf('—');
-  return i >= 0 ? g.name.slice(i + 1).trim() : g.name;
+// Two-letter brand glyph for the swatch (e.g. "CR", "LA", "CX").
+function brandMark(brand) {
+  return BRAND_MARK[brand] || (brand ? brand.slice(0, 2).toUpperCase() : '··');
 }
 
-// The dance-suitable room label, e.g. "Group Fitness" / "Studio".
+// Singular human label for the dance studio, used in the hero subhead
+// ("{short}'s {room.toLowerCase()} is class-free until …").
 function gymRoom(g) {
-  return (g.danceRooms && g.danceRooms[0]) || 'studio';
-}
-
-function cycleGym() {
-  const idx = cycleList.findIndex((g) => g.id === currentGymId);
-  const next = cycleList[(idx + 1) % cycleList.length];
-  selectGym(next.id, { push: true });
+  return g.room || (g.danceRooms && g.danceRooms[0]) || 'studio';
 }
 
 function selectGym(id, { push }) {
   if (!gyms.has(id)) return;
+  if (gym(id).status === 'coming-soon') return; // not selectable
   currentGymId = id;
   localStorage.setItem(STORE_KEY, id);
   today = todayInTz(gymTz());
@@ -125,17 +141,82 @@ function canonicalUrl() {
 
 function renderTopRow() {
   const g = gym();
-  els.gymName.textContent = gymShort(g);
-  const url = g.sourceUrl || '#';
-  els.sourceLink.href = url;
-  els.sourceLink.textContent = hostLabel(url);
+  els.gymSwatch.textContent = brandMark(g.brand);
+  els.gymBrand.textContent = g.brand || '';
+  els.gymShort.textContent = g.short || g.name;
+  els.sourceLink.href = g.sourceUrl || '#';
+  els.sourceLink.textContent = `${g.sourceHost || 'source'} ↗`;
 }
 
-function hostLabel(url) {
-  try {
-    return `${new URL(url).hostname.replace(/^www\./, '')} ↗`;
-  } catch {
-    return 'source ↗';
+// ---- bottom-sheet gym picker ----
+
+function openPicker() {
+  buildSheetList();
+  els.sheetScrim.hidden = false;
+  els.sheet.hidden = false;
+  document.body.classList.add('has-sheet-open');
+  // Next frame: add the .is-open class so the CSS transitions run.
+  requestAnimationFrame(() => {
+    els.sheetScrim.classList.add('is-open');
+    els.sheet.classList.add('is-open');
+  });
+}
+
+function closePicker() {
+  els.sheetScrim.classList.remove('is-open');
+  els.sheet.classList.remove('is-open');
+  document.body.classList.remove('has-sheet-open');
+  // After the slide-out finishes, hide so the elements don't capture clicks.
+  window.setTimeout(() => {
+    els.sheetScrim.hidden = true;
+    els.sheet.hidden = true;
+  }, 220);
+}
+
+// Build the sheet list grouped by brand, preserving registry order.
+function buildSheetList() {
+  els.sheetList.innerHTML = '';
+  const groups = [];
+  const seen = new Map();
+  for (const id of gymOrder) {
+    const g = gyms.get(id);
+    if (!g) continue;
+    if (!seen.has(g.brand)) {
+      seen.set(g.brand, groups.length);
+      groups.push({ brand: g.brand, items: [] });
+    }
+    groups[seen.get(g.brand)].items.push(g);
+  }
+  for (const grp of groups) {
+    els.sheetList.appendChild(h('div', { class: 'sheet-group-head', text: grp.brand }));
+    for (const g of grp.items) {
+      const active = g.id === currentGymId;
+      const soon = g.status === 'coming-soon';
+      const item = h('button', {
+        class: `sheet-item${active ? ' is-active' : ''}${soon ? ' is-disabled' : ''}`,
+        attrs: {
+          type: 'button',
+          'aria-current': active ? 'true' : 'false',
+          ...(soon ? { 'aria-disabled': 'true', disabled: '' } : {}),
+        },
+      },
+        h('span', { class: 'sheet-swatch', text: brandMark(g.brand) }),
+        h('span', { class: 'sheet-name' },
+          h('span', { class: 'sheet-short', text: g.short || g.name }),
+          h('span', { class: 'sheet-hood', text: g.neighborhood || '' }),
+        ),
+        soon
+          ? h('span', { class: 'sheet-soon', text: 'Coming soon' })
+          : (active ? h('span', { class: 'sheet-check', text: 'Current' }) : null),
+      );
+      if (!soon) {
+        item.addEventListener('click', () => {
+          selectGym(g.id, { push: true });
+          closePicker();
+        });
+      }
+      els.sheetList.appendChild(item);
+    }
   }
 }
 
@@ -473,7 +554,7 @@ function nowState(day, t) {
 }
 
 function heroToday(day, s, nowMin, g) {
-  const short = gymShort(g);
+  const short = g.short || g.name;
   const room = gymRoom(g).toLowerCase();
 
   if (s.kind === 'open') {
@@ -539,7 +620,7 @@ function heroOther(day) {
 
 function comingSoonHero(g) {
   return hero(
-    gymShort(g),
+    g.short || g.name,
     heroHead('Opening ', accent('soon')),
     sub("This gym's schedule isn't live yet — check back once it opens."),
   );

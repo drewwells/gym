@@ -1,11 +1,20 @@
 // The gym registry. Adding a gym = adding an entry here (plus a provider
 // module if it's a new platform). Each entry is consumed by server.js to
 // pick a provider, and shipped to the frontend (minus internals) via
-// /api/gyms so the client can render the picker and compute open-floor gaps.
+// /api/gyms so the client can render the bottom-sheet picker (grouped by
+// brand) and the hero/source-link copy.
 //
 // Fields:
 //   id            stable slug used in URLs and as the cache namespace
-//   name          display label for the gym picker
+//   name          long-form label (kept for logs / fallback)
+//   brand         picker grouping label, e.g. 'Crunch' / 'LA Fitness' / 'Crux'
+//   short         picker row title + top-left identity, e.g. 'Round Rock'
+//   neighborhood  picker row subtitle, e.g. 'Round Rock, TX'
+//   room          singular human label for the dance studio used in the
+//                 hero subhead ("{short}'s {room.toLowerCase()} is class-free
+//                 until …"). Defaults to danceRooms[0].
+//   sourceHost    short host shown in the footer source link, e.g.
+//                 'lafitness.com'. Defaults to the host of sourceUrl.
 //   provider      which providers/<provider>.js module fetches the schedule
 //   status        'live' | 'coming-soon' (coming-soon never fetches)
 //   tz            IANA timezone (all current gyms are America/Chicago)
@@ -15,7 +24,7 @@
 //   usableWindow  {start,end} local HH:MM bounds for the Open Floor view, so
 //                 24/7 clubs don't report the middle of the night as "free".
 //   minGapMinutes shortest free block worth showing in Open Floor
-//   sourceUrl     public schedule page (footer / "view on" links)
+//   sourceUrl     public schedule page (footer source link href)
 
 const DEFAULT_USABLE_WINDOW = { start: '06:00', end: '22:00' };
 const DEFAULT_MIN_GAP = 30;
@@ -24,6 +33,11 @@ const GYMS = [
   {
     id: 'crux-central',
     name: 'Crux Climbing — Central',
+    brand: 'Crux',
+    short: 'Central',
+    neighborhood: 'Central Austin',
+    room: 'Studio',
+    sourceHost: 'cruxclimbingcenter.com',
     provider: 'crux',
     status: 'live',
     tz: 'America/Chicago',
@@ -38,6 +52,11 @@ const GYMS = [
   {
     id: 'crunch-round-rock',
     name: 'Crunch — Round Rock',
+    brand: 'Crunch',
+    short: 'Round Rock',
+    neighborhood: 'Round Rock, TX',
+    room: 'Group Fitness',
+    sourceHost: 'crunch.com',
     provider: 'crunch',
     status: 'live',
     tz: 'America/Chicago',
@@ -50,6 +69,11 @@ const GYMS = [
   {
     id: 'crunch-south-austin',
     name: 'Crunch — South Austin',
+    brand: 'Crunch',
+    short: 'South Austin',
+    neighborhood: 'South Austin',
+    room: 'Group Fitness',
+    sourceHost: 'crunch.com',
     provider: 'crunch',
     status: 'live',
     tz: 'America/Chicago',
@@ -62,6 +86,11 @@ const GYMS = [
   {
     id: 'crunch-north-atx',
     name: 'Crunch — North ATX',
+    brand: 'Crunch',
+    short: 'North ATX',
+    neighborhood: 'North Austin',
+    room: 'Group Fitness',
+    sourceHost: 'crunch.com',
     provider: 'crunch',
     status: 'coming-soon',
     tz: 'America/Chicago',
@@ -74,6 +103,11 @@ const GYMS = [
   {
     id: 'lafitness-round-rock',
     name: 'LA Fitness — Round Rock',
+    brand: 'LA Fitness',
+    short: 'Round Rock',
+    neighborhood: 'Round Rock, TX',
+    room: 'Group Fitness Studio',
+    sourceHost: 'lafitness.com',
     provider: 'lafitness',
     status: 'live',
     tz: 'America/Chicago',
@@ -88,6 +122,11 @@ const GYMS = [
   {
     id: 'lafitness-anderson-lane',
     name: 'LA Fitness — Anderson Lane',
+    brand: 'LA Fitness',
+    short: 'Anderson Lane',
+    neighborhood: 'North Austin',
+    room: 'Group Fitness Studio',
+    sourceHost: 'lafitness.com',
     provider: 'lafitness',
     status: 'live',
     tz: 'America/Chicago',
@@ -111,12 +150,18 @@ function defaultGymId() {
   return (live || GYMS[0]).id;
 }
 
-// Public, client-safe view of a gym (no internal-only fields to hide today,
-// but keeps the API surface explicit so future secrets don't leak).
+// Public, client-safe view of a gym. Includes the picker/UI fields
+// (brand/short/neighborhood/room/sourceHost) so the frontend can render
+// the bottom-sheet picker and hero subhead from /api/gyms alone.
 function publicGym(g) {
   return {
     id: g.id,
     name: g.name,
+    brand: g.brand,
+    short: g.short,
+    neighborhood: g.neighborhood,
+    room: g.room || (g.danceRooms && g.danceRooms[0]) || 'Studio',
+    sourceHost: g.sourceHost,
     status: g.status,
     tz: g.tz,
     danceRooms: g.danceRooms,
