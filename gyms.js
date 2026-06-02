@@ -136,6 +136,28 @@ const GYMS = [
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.lafitness.com/Pages/clubhome.aspx?clubid=1035',
   },
+  {
+    id: 'golds-anderson-arbor',
+    name: "Gold's Gym — Anderson Arbor",
+    brand: "Gold's Gym",
+    short: 'Anderson Arbor',
+    neighborhood: 'North Austin',
+    room: 'GGX Studio',
+    sourceHost: 'goldsgym.com',
+    provider: 'golds',
+    status: 'live',
+    tz: 'America/Chicago',
+    // Gold's serves a full week as escaped JSON embedded in the location page;
+    // `slug` is the goldsgym.com /locations/tx/<slug>/ path segment.
+    providerConfig: { slug: 'austin-anderson-arbor' },
+    // The golds provider classifies on the explicit StudioName/IsCycle: the
+    // group-exercise wood floor becomes "GGX Studio" (danceable), cycle and
+    // pool route elsewhere; unknown classes default to GGX (conservative).
+    danceRooms: ['GGX Studio'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.goldsgym.com/locations/tx/austin-anderson-arbor/',
+  },
 ];
 
 const byId = new Map(GYMS.map((g) => [g.id, g]));
