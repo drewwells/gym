@@ -158,6 +158,27 @@ const GYMS = [
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.goldsgym.com/locations/tx/austin-anderson-arbor/',
   },
+  {
+    id: 'golds-highland',
+    name: "Gold's Gym — Highland",
+    brand: "Gold's Gym",
+    short: 'Highland',
+    neighborhood: 'North-Central Austin',
+    room: 'GGX Studio',
+    sourceHost: 'goldsgym.com',
+    provider: 'golds',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { slug: 'austin-highland' },
+    // Highland adds a "GOLD'S FIT" (HYROX/functional) studio alongside the
+    // group-exercise wood floor and cycle room; the golds provider classifies
+    // each off the explicit StudioName, so only "Group Exercise" maps to the
+    // danceable GGX Studio (consistent with Anderson Arbor).
+    danceRooms: ['GGX Studio'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.goldsgym.com/locations/tx/austin-highland/',
+  },
 ];
 
 const byId = new Map(GYMS.map((g) => [g.id, g]));

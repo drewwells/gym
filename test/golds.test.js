@@ -42,6 +42,15 @@ test('classifyRoom: pool classes route to Other; unknown defaults to GGX', () =>
   assert.equal(classifyRoom({ EventName: 'Some New Format', StudioName: 'Group Exercise Anderson Arbor' }), 'GGX Studio');
 });
 
+test('classifyRoom keys off StudioName across locations (not a hardcoded one)', () => {
+  // "Group Exercise <any location>" is the danceable GGX floor.
+  assert.equal(classifyRoom({ EventName: 'BODYPUMP', StudioName: 'Group Exercise Highland' }), 'GGX Studio');
+  assert.equal(classifyRoom({ EventName: 'RPM', StudioName: 'Group Cycle Highland', IsCycle: true }), 'Cycle Studio');
+  // Highland's GOLD'S FIT (HYROX/functional) is its own room, not the dance floor.
+  assert.equal(classifyRoom({ EventName: 'HYROX POWER', StudioName: "GOLD'S FIT Highland" }), "Gold's Fit");
+  assert.equal(classifyRoom({ EventName: 'GOLD’S FIT', StudioName: "GOLD’S FIT Highland" }), "Gold's Fit");
+});
+
 test('shortDateToISO normalizes M/D/YYYY to YYYY-MM-DD', () => {
   assert.equal(shortDateToISO('6/2/2026'), '2026-06-02');
   assert.equal(shortDateToISO('12/25/2026'), '2026-12-25');
