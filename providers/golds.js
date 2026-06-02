@@ -37,6 +37,7 @@ const USER_AGENT =
 const DEFAULT_CLASS_MINUTES = 60;
 const STUDIO = 'GGX Studio';
 const CYCLE = 'Cycle Studio';
+const GOLDS_FIT = "Gold's Fit";
 
 function headers() {
   return {
@@ -48,16 +49,25 @@ function headers() {
 }
 
 // Class-name patterns that mean "this happens in the pool", not the GGX floor
-// or the cycle studio. (Cycle is detected structurally via IsCycle/StudioName.)
+// or any other studio. (Cycle/Gold's Fit are identified structurally below.)
 const POOL_PATTERNS = [/\baqua\b/i, /\bpool\b/i, /\bswim\b/i, /\bh2o\b/i];
 
-// Decide the room for an event. Prefer the structural cycle signals (explicit
-// and reliable), then a pool name check, else default to the GGX studio.
+// Decide the room for an event. Gold's gives an explicit, location-stamped
+// StudioName ("Group Exercise <Loc>", "Group Cycle <Loc>", "GOLD'S FIT <Loc>"),
+// so we key off that (not a hardcoded location) and collapse it to a stable,
+// location-agnostic room label:
+//   - "Group Cycle ..." / IsCycle / StudioCycleID  -> Cycle Studio (cycle room)
+//   - "GOLD'S FIT ..."                              -> Gold's Fit (HYROX/turf)
+//   - pool classes (by name)                        -> Other
+//   - everything else (incl. "Group Exercise ...")  -> GGX Studio (the danceable
+//     wood floor; unknown StudioNames default here so an unrecognized class
+//     blocks the floor rather than falsely freeing it — conservative).
 function classifyRoom(ev) {
   const studio = ev.StudioName || '';
   if (ev.IsCycle === true || /cycle/i.test(studio) || ev.StudioCycleID > 0) {
     return CYCLE;
   }
+  if (/gold['’]?s\s*fit/i.test(studio)) return GOLDS_FIT;
   if (POOL_PATTERNS.some((re) => re.test(ev.EventName || ''))) return 'Other';
   return STUDIO;
 }
