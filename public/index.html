@@ -16,33 +16,35 @@
 <body>
   <div class="stage">
     <div class="shell">
-      <div class="top-row">
-        <button id="gymBtn" type="button" class="gym-btn" aria-label="Change gym" aria-haspopup="dialog">
-          <span id="gymSwatch" class="gym-swatch" aria-hidden="true">&hellip;</span>
-          <span class="gym-btn-text">
-            <span id="gymBrand" class="gym-brand">&hellip;</span>
-            <span class="gym-short-line">
-              <span id="gymShort" class="gym-short">&hellip;</span>
-              <span class="caret" aria-hidden="true">&#9662;</span>
-            </span>
-          </span>
-        </button>
-        <span class="product">Open Floor</span>
-      </div>
+      <!-- Top row swaps content per view: board mode shows the "All floors"
+           identity + product label; detail mode shows a back button + the
+           gym's identity (still tap-to-switch via the bottom-sheet picker). -->
+      <div class="top-row" id="topRow"></div>
 
       <div id="dayStrip" class="day-strip" role="tablist" aria-label="Choose a day"></div>
 
-      <div id="swipe" class="swipe">
-        <div id="track" class="track"></div>
+      <!-- Board view: hero summarizing all live gyms for the selected date,
+           then one row per gym sorted by open-now → opening-later → done. -->
+      <div id="boardView" class="view view-board">
+        <div id="boardHero" class="hero board-hero"></div>
+        <div id="boardList" class="board-list" role="list"></div>
       </div>
 
-      <div class="source">
-        <span>Schedule source</span>
-        <a id="sourceLink" class="source-link" href="#" target="_blank" rel="noopener">&mdash;</a>
+      <!-- Detail view: existing per-gym swipe deck. Hidden until the user
+           drills in by tapping a board row. -->
+      <div id="detailView" class="view view-detail" hidden>
+        <div id="swipe" class="swipe">
+          <div id="track" class="track"></div>
+        </div>
+        <div class="source">
+          <span>Schedule source</span>
+          <a id="sourceLink" class="source-link" href="#" target="_blank" rel="noopener">&mdash;</a>
+        </div>
       </div>
     </div>
 
-    <!-- Bottom-sheet gym picker. Hidden until tapping the identity button. -->
+    <!-- Bottom-sheet gym picker. Used by the in-detail gym switcher; also
+         available as a quick jump from the board if we ever wire it in. -->
     <div id="sheetScrim" class="sheet-scrim" hidden></div>
     <div id="sheet" class="sheet" role="dialog" aria-label="Choose a gym" aria-modal="true" hidden>
       <div class="sheet-handle" aria-hidden="true"></div>

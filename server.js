@@ -4,6 +4,7 @@ const express = require('express');
 const { GYMS, getGym, publicGym } = require('./gyms');
 const { todayInTz, tzMidnightUTC } = require('./lib/time');
 const { computeOpenFloor } = require('./lib/availability');
+const { summarizeBoardDay } = require('./lib/board');
 
 const crux = require('./providers/crux');
 const crunch = require('./providers/crunch');
@@ -16,6 +17,13 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const WEEK_DAYS = 7;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+// Daily prefetch keeps every live gym's current 7-day cache warm so
+// /api/board and /api/availability reads always hit cached data. Runs once at
+// startup and then every POLL_INTERVAL_MS thereafter.
+const POLL_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// Stagger upstream calls so the daily warm-up doesn't fan out concurrent hits
+// against the same provider's edge.
+const POLL_STAGGER_MS = 750;
 
 app.use(express.static('public'));
 
@@ -132,9 +140,79 @@ app.get('/api/availability', async (req, res) => {
   }
 });
 
+// Aggregate view used by the home board: for the requested calendar date (in
+// each gym's own timezone), return the day's open-floor summary for every gym
+// — dance-suitable room's gaps + classes, plus rollups. Coming-soon gyms are
+// included so the UI can render them dim. Reads are served from the warmed
+// cache; one slow/failing upstream never blocks the rest.
+app.get('/api/board', async (req, res) => {
+  const refresh = req.query.refresh === '1';
+  // The board's date is interpreted in each gym's own tz; without a query
+  // param, anchor on the first live gym's today (all current gyms share
+  // America/Chicago, so this is unambiguous in practice).
+  const anchorTz = (GYMS.find((g) => g.status === 'live') || GYMS[0]).tz;
+  const date = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date))
+    ? req.query.date
+    : todayInTz(anchorTz);
+
+  const gyms = await Promise.all(GYMS.map(async (gym) => {
+    const base = publicGym(gym);
+    if (gym.status !== 'live') {
+      return { ...base, day: null };
+    }
+    try {
+      // Anchor on the gym's own today so we hit the same cache key the daily
+      // poller warms — and so out-of-window dates fall through to a fresh
+      // fetch rather than thrashing the cache.
+      const gymToday = todayInTz(gym.tz);
+      const week = await getWeek(gym, gymToday, { refresh });
+      const summary = summarizeBoardDay(week.events, gym, date);
+      return { ...base, day: summary, cached: week.cached, stale: week.stale };
+    } catch (err) {
+      console.error(`[${gym.id}] board entry failed:`, err.message);
+      return { ...base, day: null, error: err.message };
+    }
+  }));
+
+  res.json({ date, gyms });
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, today: todayInTz(), gyms: GYMS.length, cacheSize: weekCache.size });
 });
+
+// Walk every live gym in sequence (small delay between to avoid concurrent
+// fans against the same upstream) and force-refresh the current 7-day window.
+// One failure logs and moves on — the rest still get warmed.
+async function pollAllGyms() {
+  const live = GYMS.filter((g) => g.status === 'live');
+  console.log(`Daily poll: refreshing ${live.length} gyms…`);
+  let ok = 0;
+  let fail = 0;
+  for (const gym of live) {
+    try {
+      const today = todayInTz(gym.tz);
+      await getWeek(gym, today, { refresh: true });
+      ok++;
+    } catch (err) {
+      fail++;
+      console.error(`[${gym.id}] daily poll failed:`, err.message);
+    }
+    if (POLL_STAGGER_MS > 0) {
+      await new Promise((r) => setTimeout(r, POLL_STAGGER_MS));
+    }
+  }
+  console.log(`Daily poll done: ${ok} ok, ${fail} failed`);
+}
+
+function startDailyPoll() {
+  // Fire-and-forget initial warm-up. Don't block the listen() callback on it
+  // — readiness probes shouldn't wait for upstreams.
+  pollAllGyms().catch((err) => console.error('initial poll failed:', err.message));
+  setInterval(() => {
+    pollAllGyms().catch((err) => console.error('daily poll failed:', err.message));
+  }, POLL_INTERVAL_MS).unref();
+}
 
 // SPA fallback: deep links like /crunch-round-rock have no file on disk
 // (express.static above already served real assets and /api/* is handled by
@@ -148,4 +226,5 @@ app.use((req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`Gym calendar listening on :${PORT} (${GYMS.length} gyms)`);
+  startDailyPoll();
 });
