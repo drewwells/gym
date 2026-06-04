@@ -15,41 +15,77 @@ const PROVIDERS = { crux, crunch, lafitness, golds };
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const WEEK_DAYS = 7;
-const CACHE_TTL_MS = 10 * 60 * 1000;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 app.use(express.static('public'));
 
 // Cache key: `${gymId}:${weekStartDate}` -> { fetchedAt, payload }
 const weekCache = new Map();
+// Same-key dedupe for in-flight upstream fetches (cold loads and background
+// refreshes alike) so concurrent callers share one provider call.
+const inflight = new Map();
+
+// Fetch from the provider and store in the cache. Concurrent callers for the
+// same key share the same promise. Errors propagate to the caller; background
+// refreshers should catch and log so a transient upstream failure doesn't take
+// down the process or evict the stale entry we just served.
+function fetchAndCache(gym, date, cacheKey) {
+  const existing = inflight.get(cacheKey);
+  if (existing) return existing;
+
+  const p = (async () => {
+    const startUTC = tzMidnightUTC(date, gym.tz);
+    const endUTC = new Date(startUTC.getTime() + WEEK_DAYS * 24 * 60 * 60 * 1000 - 1);
+
+    let events = [];
+    if (gym.status === 'live') {
+      const provider = PROVIDERS[gym.provider];
+      if (!provider) throw new Error(`unknown provider: ${gym.provider}`);
+      events = await provider.fetchWeek(gym, startUTC, endUTC);
+      events.sort((a, b) => new Date(a.startDT) - new Date(b.startDT));
+    }
+
+    const payload = {
+      gymId: gym.id,
+      weekStart: date,
+      weekEnd: endUTC.toISOString(),
+      events,
+    };
+    weekCache.set(cacheKey, { fetchedAt: Date.now(), payload });
+    return payload;
+  })().finally(() => inflight.delete(cacheKey));
+
+  inflight.set(cacheKey, p);
+  return p;
+}
 
 // Fetch (or serve cached) one week of normalized events for a gym, where the
 // week starts at midnight `date` in the gym's timezone.
+//
+// Stale-while-revalidate: fresh entries (younger than CACHE_TTL_MS) are
+// returned as-is. Stale entries are returned immediately and a background
+// refresh is kicked off. Only a cold cache blocks the caller on the upstream
+// call. `?refresh=1` bypasses both paths and forces a foreground fetch.
 async function getWeek(gym, date, { refresh = false } = {}) {
   const cacheKey = `${gym.id}:${date}`;
-  if (refresh) weekCache.delete(cacheKey);
+  if (refresh) {
+    weekCache.delete(cacheKey);
+    const payload = await fetchAndCache(gym, date, cacheKey);
+    return { ...payload, cached: false };
+  }
+
   const cached = weekCache.get(cacheKey);
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-    return { ...cached.payload, cached: true };
+  if (cached) {
+    const stale = Date.now() - cached.fetchedAt >= CACHE_TTL_MS;
+    if (stale) {
+      fetchAndCache(gym, date, cacheKey).catch((err) => {
+        console.error(`[${gym.id}] background refresh failed:`, err.message);
+      });
+    }
+    return { ...cached.payload, cached: true, stale };
   }
 
-  const startUTC = tzMidnightUTC(date, gym.tz);
-  const endUTC = new Date(startUTC.getTime() + WEEK_DAYS * 24 * 60 * 60 * 1000 - 1);
-
-  let events = [];
-  if (gym.status === 'live') {
-    const provider = PROVIDERS[gym.provider];
-    if (!provider) throw new Error(`unknown provider: ${gym.provider}`);
-    events = await provider.fetchWeek(gym, startUTC, endUTC);
-    events.sort((a, b) => new Date(a.startDT) - new Date(b.startDT));
-  }
-
-  const payload = {
-    gymId: gym.id,
-    weekStart: date,
-    weekEnd: endUTC.toISOString(),
-    events,
-  };
-  weekCache.set(cacheKey, { fetchedAt: Date.now(), payload });
+  const payload = await fetchAndCache(gym, date, cacheKey);
   return { ...payload, cached: false };
 }
 
@@ -89,7 +125,7 @@ app.get('/api/availability', async (req, res) => {
   try {
     const week = await getWeek(gym, date, { refresh: req.query.refresh === '1' });
     const openFloor = computeOpenFloor(week.events, gym, date);
-    res.json({ gymId: gym.id, cached: week.cached, ...openFloor });
+    res.json({ gymId: gym.id, cached: week.cached, stale: week.stale, ...openFloor });
   } catch (err) {
     console.error(`[${gym.id}] availability failed:`, err.message);
     res.status(502).json({ error: 'Failed to compute availability', detail: err.message });
