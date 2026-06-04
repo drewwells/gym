@@ -178,24 +178,38 @@ body {
 .day-strip {
   display: flex;
   gap: 10px;
-  padding: 8px 22px 6px;
+  padding: 8px 22px 10px;
   overflow-x: auto;
   scrollbar-width: none;
+  /* `flex: 0 0 auto` keeps the strip's natural height — otherwise the
+     parent's flex column would shrink it (and squash the pill) when the
+     adjacent view container's `overflow-y: auto` triggers reflow. */
+  flex: 0 0 auto;
 }
 
 .day-chip {
+  /* Explicit inline-flex layout so the dow/dom stack reliably sizes the
+     pill — relying on the button's intrinsic block layout led to the pill
+     being computed shorter than its content under some flex-column reflows
+     (most visibly on the board view). */
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
   min-width: 50px;
-  padding: 8px 12px;
+  min-height: 44px;
+  padding: 6px 12px;
   text-align: center;
   border-radius: 999px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--muted);
   font-family: var(--mono);
+  font-size: 13px;
   letter-spacing: 0.08em;
   font-weight: 500;
-  line-height: 1.05;
+  line-height: 1.1;
   cursor: pointer;
 }
 
@@ -213,11 +227,13 @@ body {
   letter-spacing: 0.08em;
   opacity: 0.8;
   margin-bottom: 2px;
+  line-height: 1;
 }
 
 .day-chip__dom {
   font-size: 13px;
   font-weight: 600;
+  line-height: 1;
 }
 
 /* ---- view containers (board vs detail share the shell below the date strip) ---- */

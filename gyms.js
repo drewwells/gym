@@ -17,6 +17,10 @@
 //                 'lafitness.com'. Defaults to the host of sourceUrl.
 //   provider      which providers/<provider>.js module fetches the schedule
 //   status        'live' | 'coming-soon' (coming-soon never fetches)
+//   poll          optional; defaults true. Set false to exclude this gym from
+//                 the daily cache warm-up (still reachable via /api/* on
+//                 demand — the cold call just blocks the first caller). Use
+//                 for gyms we keep registered but don't actively care about.
 //   tz            IANA timezone (all current gyms are America/Chicago)
 //   providerConfig provider-specific knobs (locationId / slug / clubId)
 //   danceRooms    room names treated as dance-suitable wood-floor studios.
@@ -40,6 +44,10 @@ const GYMS = [
     sourceHost: 'cruxclimbingcenter.com',
     provider: 'crux',
     status: 'live',
+    // Crux remains in the registry (deep links keep working) but we don't
+    // proactively warm its cache — it's not a destination we're optimizing
+    // for. First on-demand request pays the cold fetch.
+    poll: false,
     tz: 'America/Chicago',
     providerConfig: { locationId: 2 },
     // Crux exposes no room field; the crux provider synthesizes "Studio" vs
