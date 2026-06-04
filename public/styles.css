@@ -74,6 +74,13 @@ body {
   gap: 10px;
 }
 
+.top-row__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .gym-btn {
   border: none;
   background: transparent;
@@ -86,6 +93,26 @@ body {
   align-items: center;
   gap: 10px;
 }
+
+/* The board's identity isn't tappable — it's a label, not a picker. */
+.gym-btn--static { cursor: default; }
+
+.back-btn {
+  border: 1px solid var(--divider);
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 7px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.back-btn:hover { color: var(--ink); border-color: var(--ink); }
 
 .gym-swatch {
   flex: 0 0 auto;
@@ -191,6 +218,149 @@ body {
 .day-chip__dom {
   font-size: 13px;
   font-weight: 600;
+}
+
+/* ---- view containers (board vs detail share the shell below the date strip) ---- */
+.view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.view[hidden] { display: none; }
+
+/* The board scrolls as one column: hero pinned at top, then list of rows. */
+.view-board {
+  overflow-y: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.view-detail {
+  position: relative;
+}
+
+/* The detail view's swipe deck takes the available column; source footer sits
+   below it (existing layout). */
+.view-detail .swipe { flex: 1 1 auto; }
+
+/* Slightly looser bottom padding for the board (no source footer below). */
+.board-hero { padding-bottom: 22px; }
+
+/* ---- board list ---- */
+.board-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 22px 32px;
+}
+
+.board-row {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: center;
+  column-gap: 14px;
+  padding: 16px 0;
+  border-top: 1px solid var(--divider);
+  background: transparent;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.board-row:first-of-type { border-top: 0; }
+
+.board-row.is-muted { opacity: 0.55; }
+.board-row.is-soon { cursor: default; }
+.board-row.is-error { opacity: 0.65; }
+
+.board-row__swatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--paper);
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.board-row.is-muted .board-row__swatch,
+.board-row.is-soon .board-row__swatch,
+.board-row.is-error .board-row__swatch {
+  background: var(--ink);
+}
+
+.board-row__name {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.board-row__brand {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.board-row__short {
+  font-family: var(--body);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+.board-row__status {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-top: 3px;
+  text-transform: none;
+}
+
+.board-row__metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.board-row__metric-big {
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.board-row.is-muted .board-row__metric-big,
+.board-row.is-soon .board-row__metric-big,
+.board-row.is-error .board-row__metric-big {
+  color: var(--muted);
+}
+
+.board-row__metric-sm {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 /* ---- swipe deck ---- */

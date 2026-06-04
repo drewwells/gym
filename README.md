@@ -21,17 +21,32 @@ Adding a gym is usually just a new entry in [`gyms.js`](gyms.js); a new
 
 ## Features
 
-- **Gym picker** — switch between gyms; coming-soon locations are shown
-  disabled.
-- **Classes view** — the day's classes for the selected gym, with room,
-  instructor, and remaining-spots info, linking back to the source.
+- **All-Floors board (home)** — `/` shows one row per gym for the
+  selected date, sorted *open-now → opening-later → done*. An
+  answer-first hero summarizes "is anyone open right now?" across every
+  live gym (best-bet pick when at least one is open, next-up time when
+  none is, "wrap on today" otherwise). Coming-soon gyms appear dimmed
+  at the bottom.
+- **Per-gym detail drill-in** — tap a row to open `/?gym=<id>&date=<d>`
+  with the existing swipeable per-day view; a back button returns to
+  the board, preserving the date. URLs are shareable and back/forward
+  navigation works.
 - **Open Floor view** — for each dance-suitable studio room, the free
   time blocks between classes within a usable window (default
   06:00–22:00 local), at least `minGapMinutes` long (default 30).
-- Prev / Today / Next navigation; the initial view rolls over to tomorrow
+- **Bottom-sheet gym picker** — available from the detail view's gym
+  identity; coming-soon locations shown disabled.
+- Shared 7-day date strip drives both views; rolls over to tomorrow
   after 9 PM local.
-- 7-day in-memory cache (10 min TTL) keyed by gym, so date-nav is instant.
-- Responsive (desktop + mobile).
+- **Daily polling** — at startup and once every 24h the server warms
+  the per-gym weekly cache for every live gym, so the board and
+  availability endpoints always serve cached data. Per-gym failures are
+  logged but don't abort the rest of the batch. `&refresh=1` still
+  forces a foreground re-fetch.
+- 7-day in-memory cache with stale-while-revalidate (24h freshness)
+  keyed by gym; concurrent callers share the inflight upstream call.
+- Responsive: phone-first column that centers as a phone-width frame on
+  desktop.
 
 ## Local development
 
@@ -50,20 +65,32 @@ API:
   7-day window starting at midnight (gym timezone) of `date` (defaults to
   today / first live gym). Append `&refresh=1` to bypass the cache.
 - `GET /api/availability?gym=<id>&date=YYYY-MM-DD` — Open Floor gaps per
-  dance-suitable room for that day.
+  dance-suitable room for that day (single gym, single day).
+- `GET /api/board?date=YYYY-MM-DD` — aggregate view that powers the home
+  board: every gym in the registry with its open-floor summary for that
+  date (in each gym's own tz). Each entry carries identity fields
+  (`id`, `name`, `short`, `brand`, `neighborhood`, `status`,
+  `sourceUrl`) plus a `day` object with the day's `gaps`
+  (`startDT`/`endDT`/`minutes`), `events` (`name`/`startDT`/`endDT`),
+  `totalOpenMin`, and `windowCount`. Coming-soon gyms appear with
+  `day: null` so the UI can render them dim. `date` defaults to today
+  in the first live gym's tz; `&refresh=1` forces a re-fetch.
 - `GET /api/health` — health probe.
 
 ## Architecture
 
 ```
-server.js              Express wiring, endpoints, gym+week cache
+server.js              Express wiring, endpoints, gym+week cache, daily poller
 gyms.js                the gym registry (one entry per location)
 lib/time.js            timezone helpers (per-gym tz)
 lib/availability.js    Open Floor gap math (pure; unit-tested)
+lib/board.js           home-board aggregation + sort ranking (pure; unit-tested)
 providers/crux.js      Crux tilefive widget + X-Api-Key scrape + room classifier
 providers/crunch.js    Crunch crunch_core/occurrences JSON
-public/                static frontend (picker + Classes/Open Floor toggle)
-test/                  availability unit tests
+providers/lafitness.js LA Fitness print-grid scrape (no JSON API; weekly template)
+providers/golds.js     Gold's Gym embedded event_data JSON on the location page
+public/                static frontend (home board + per-gym detail drill-in)
+test/                  availability + board + provider unit tests
 ```
 
 Each provider exposes `fetchWeek(gym, startUTC, endUTC)` and returns a
