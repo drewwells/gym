@@ -180,7 +180,10 @@ function renderShell() {
     els.boardView.hidden = false;
     els.detailView.hidden = true;
     renderBoard();
-    ensureBoardLoaded(dayOffset);
+    // Prefetch every strip-day in parallel. The server anchors its cache on
+    // each gym's local today, so all 7 day-requests coalesce to one upstream
+    // fetch per gym — making chip clicks instant once warm.
+    prefetchBoardWeek();
   } else {
     els.boardView.hidden = true;
     els.detailView.hidden = false;
@@ -188,9 +191,18 @@ function renderShell() {
     els.sourceLink.href = g?.sourceUrl || '#';
     els.sourceLink.textContent = `${g?.sourceHost || 'source'} ↗`;
     renderDetailSlides();
-    ensureDayLoaded(dayOffset);
-    prefetchNeighbors(dayOffset);
+    // Same idea for detail: pull the whole strip up front so swiping /
+    // chip-clicks are instant. Server-side caching means one upstream call.
+    prefetchDetailWeek();
   }
+}
+
+function prefetchBoardWeek() {
+  for (let i = 0; i < STRIP_DAYS; i++) ensureBoardLoaded(i);
+}
+
+function prefetchDetailWeek() {
+  for (let i = 0; i < STRIP_DAYS; i++) ensureDayLoaded(i);
 }
 
 function renderTopRow() {
@@ -845,11 +857,6 @@ async function ensureDayLoaded(offset) {
   if (id === currentGymId) refreshDetailSlide(offset);
 }
 
-function prefetchNeighbors(offset) {
-  ensureDayLoaded(offset - 1);
-  ensureDayLoaded(offset + 1);
-}
-
 // ---- picker (detail's gym switcher) ----
 
 function openPicker() {
@@ -1059,12 +1066,11 @@ function startTick() {
       dayOffset = 0;
       buildDayStrip();
       if (view === 'board') {
-        ensureBoardLoaded(0);
         renderBoard();
+        prefetchBoardWeek();
       } else {
         renderDetailSlides();
-        ensureDayLoaded(0);
-        prefetchNeighbors(0);
+        prefetchDetailWeek();
       }
       return;
     }

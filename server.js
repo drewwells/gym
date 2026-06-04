@@ -67,18 +67,32 @@ function fetchAndCache(gym, date, cacheKey) {
   return p;
 }
 
-// Fetch (or serve cached) one week of normalized events for a gym, where the
-// week starts at midnight `date` in the gym's timezone.
+// Calendar-day delta between two YYYY-MM-DD strings (positive if `b > a`).
+// Used to test whether a requested date falls inside the current 7-day strip.
+function dayDelta(a, b) {
+  const [ay, am, ad] = a.split('-').map(Number);
+  const [by, bm, bd] = b.split('-').map(Number);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
+}
+
+// Fetch (or serve cached) one week of normalized events for a gym. The cache
+// key is normally anchored on the gym's *local today* so every date in the
+// current 7-day strip shares a single weekly upstream fetch (the one the
+// daily poller warms). Dates outside the strip fall back to a date-anchored
+// entry so explicit deep links to past/future dates still work.
 //
 // Stale-while-revalidate: fresh entries (younger than CACHE_TTL_MS) are
 // returned as-is. Stale entries are returned immediately and a background
 // refresh is kicked off. Only a cold cache blocks the caller on the upstream
 // call. `?refresh=1` bypasses both paths and forces a foreground fetch.
 async function getWeek(gym, date, { refresh = false } = {}) {
-  const cacheKey = `${gym.id}:${date}`;
+  const gymToday = todayInTz(gym.tz);
+  const delta = dayDelta(gymToday, date);
+  const anchor = (delta >= 0 && delta < WEEK_DAYS) ? gymToday : date;
+  const cacheKey = `${gym.id}:${anchor}`;
   if (refresh) {
     weekCache.delete(cacheKey);
-    const payload = await fetchAndCache(gym, date, cacheKey);
+    const payload = await fetchAndCache(gym, anchor, cacheKey);
     return { ...payload, cached: false };
   }
 
@@ -86,14 +100,14 @@ async function getWeek(gym, date, { refresh = false } = {}) {
   if (cached) {
     const stale = Date.now() - cached.fetchedAt >= CACHE_TTL_MS;
     if (stale) {
-      fetchAndCache(gym, date, cacheKey).catch((err) => {
+      fetchAndCache(gym, anchor, cacheKey).catch((err) => {
         console.error(`[${gym.id}] background refresh failed:`, err.message);
       });
     }
     return { ...cached.payload, cached: true, stale };
   }
 
-  const payload = await fetchAndCache(gym, date, cacheKey);
+  const payload = await fetchAndCache(gym, anchor, cacheKey);
   return { ...payload, cached: false };
 }
 
@@ -161,11 +175,10 @@ app.get('/api/board', async (req, res) => {
       return { ...base, day: null };
     }
     try {
-      // Anchor on the gym's own today so we hit the same cache key the daily
-      // poller warms — and so out-of-window dates fall through to a fresh
-      // fetch rather than thrashing the cache.
-      const gymToday = todayInTz(gym.tz);
-      const week = await getWeek(gym, gymToday, { refresh });
+      // getWeek anchors its cache on the gym's local today for any in-strip
+      // date, so this shares the cache entry the daily poller warms — no
+      // matter which strip-day the user is asking about.
+      const week = await getWeek(gym, date, { refresh });
       const summary = summarizeBoardDay(week.events, gym, date);
       return { ...base, day: summary, cached: week.cached, stale: week.stale };
     } catch (err) {
@@ -181,11 +194,12 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, today: todayInTz(), gyms: GYMS.length, cacheSize: weekCache.size });
 });
 
-// Walk every live gym in sequence (small delay between to avoid concurrent
-// fans against the same upstream) and force-refresh the current 7-day window.
-// One failure logs and moves on — the rest still get warmed.
+// Walk every live, poll-enabled gym in sequence (small delay between to avoid
+// concurrent fans against the same upstream) and force-refresh the current
+// 7-day window. One failure logs and moves on — the rest still get warmed.
+// Gyms with `poll: false` are skipped (still reachable on demand).
 async function pollAllGyms() {
-  const live = GYMS.filter((g) => g.status === 'live');
+  const live = GYMS.filter((g) => g.status === 'live' && g.poll !== false);
   console.log(`Daily poll: refreshing ${live.length} gyms…`);
   let ok = 0;
   let fail = 0;
