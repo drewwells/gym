@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { summarizeBoardDay, boardSortKey, sortBoardRows } = require('../lib/board');
+const { summarizeBoardDay, sortBoardRows, BRAND_PRIORITY } = require('../lib/board');
 
 const GYM = {
   id: 'test',
@@ -23,9 +23,6 @@ function ev(room, startLocalH, endLocalH, { danceSuitable = true, date = DATE, n
     endDT: z(endLocalH),
   };
 }
-// UTC ms for a Chicago local hour on DATE.
-const local = (h) => LOCAL_MIDNIGHT_UTC + h * 3600000;
-
 test('summarizeBoardDay: empty events → one full-day window, 960 min open', () => {
   const s = summarizeBoardDay([], GYM, DATE);
   assert.equal(s.date, DATE);
@@ -70,84 +67,104 @@ test('summarizeBoardDay: multi-room gym merges gaps + events across dance rooms'
   assert.ok(s.gaps.length >= 2);
 });
 
-// ---- sort ranking ----
+// ---- sort ordering ----
+// The home-board groups rows by brand in a fixed priority (Crunch → Gold's
+// Gym → LA Fitness, then any other brand alphabetically), and within each
+// brand sorts alphabetically by `short` (the location label). Openness is
+// surfaced via badges/hero but no longer affects ordering — so the same gym
+// sits in the same slot all day long.
 
-function row(opts = {}) {
-  return {
-    gymId: opts.gymId || 'g',
-    short: opts.short || 'g',
-    status: opts.status || 'live',
-    day: opts.day !== undefined ? opts.day : { gaps: [], events: [], totalOpenMin: 0, windowCount: 0 },
-  };
-}
-function gap(startH, endH) {
-  return {
-    startDT: new Date(local(startH)).toISOString(),
-    endDT: new Date(local(endH)).toISOString(),
-    minutes: (endH - startH) * 60,
-  };
+function brandRow(brand, short, id) {
+  return { gymId: id, id, brand, short, status: 'live', day: { gaps: [], events: [], totalOpenMin: 0, windowCount: 0 } };
 }
 
-test('boardSortKey: open-now sorts before opening-later sorts before done', () => {
-  const now = local(12); // noon CT
-  const openNow = row({ gymId: 'a', day: { gaps: [gap(11, 13)], events: [], totalOpenMin: 120, windowCount: 1 } });
-  const later   = row({ gymId: 'b', day: { gaps: [gap(15, 16)], events: [], totalOpenMin: 60, windowCount: 1 } });
-  const done    = row({ gymId: 'c', day: { gaps: [gap(8, 9)],   events: [], totalOpenMin: 60, windowCount: 1 } });
-
-  const [oa] = boardSortKey(openNow, now);
-  const [lb] = boardSortKey(later, now);
-  const [dc] = boardSortKey(done, now);
-  assert.equal(oa, 0);
-  assert.equal(lb, 1);
-  assert.equal(dc, 2);
+test('BRAND_PRIORITY pins Crunch → Gold\'s Gym → LA Fitness', () => {
+  assert.deepEqual(BRAND_PRIORITY, ["Crunch", "Gold's Gym", 'LA Fitness']);
 });
 
-test('boardSortKey: among open-now rows, more time-left ranks first', () => {
-  const now = local(12);
-  const longest = row({ gymId: 'l', day: { gaps: [gap(11, 18)], events: [], totalOpenMin: 7 * 60, windowCount: 1 } });
-  const shortest = row({ gymId: 's', day: { gaps: [gap(11, 13)], events: [], totalOpenMin: 2 * 60, windowCount: 1 } });
-
-  const sorted = sortBoardRows([shortest, longest], now);
-  assert.equal(sorted[0].gymId, 'l', 'longer remaining should come first');
-  assert.equal(sorted[1].gymId, 's');
-});
-
-test('boardSortKey: among opening-later rows, soonest start ranks first', () => {
-  const now = local(12);
-  const sooner = row({ gymId: 'soon', day: { gaps: [gap(13, 14)], events: [], totalOpenMin: 60, windowCount: 1 } });
-  const later  = row({ gymId: 'late', day: { gaps: [gap(17, 20)], events: [], totalOpenMin: 180, windowCount: 1 } });
-
-  const sorted = sortBoardRows([later, sooner], now);
-  assert.equal(sorted[0].gymId, 'soon');
-  assert.equal(sorted[1].gymId, 'late');
-});
-
-test('boardSortKey: coming-soon + null day always sort into the done bucket', () => {
-  const now = local(12);
-  const soon = row({ gymId: 'cs', status: 'coming-soon', day: null });
-  const empty = row({ gymId: 'noop', day: { gaps: [], events: [], totalOpenMin: 0, windowCount: 0 } });
-  assert.equal(boardSortKey(soon, now)[0], 2);
-  assert.equal(boardSortKey(empty, now)[0], 2);
-});
-
-test('sortBoardRows: full mixed bucket sort with stable ordering', () => {
-  const now = local(12);
+test('sortBoardRows groups by brand priority across brands', () => {
   const rows = [
-    row({ gymId: 'z-done', day: { gaps: [], events: [], totalOpenMin: 0, windowCount: 0 } }),
-    row({ gymId: 'open-3h', short: 'B', day: { gaps: [gap(11, 14)], events: [], totalOpenMin: 180, windowCount: 1 } }),
-    row({ gymId: 'open-5h', short: 'A', day: { gaps: [gap(11, 16)], events: [], totalOpenMin: 300, windowCount: 1 } }),
-    row({ gymId: 'later-5pm', day: { gaps: [gap(17, 20)], events: [], totalOpenMin: 180, windowCount: 1 } }),
-    row({ gymId: 'later-3pm', day: { gaps: [gap(15, 16)], events: [], totalOpenMin: 60, windowCount: 1 } }),
-    row({ gymId: 'a-coming', status: 'coming-soon', day: null }),
+    brandRow('LA Fitness', 'Round Rock', 'laf-rr'),
+    brandRow("Gold's Gym", 'Highland', 'g-h'),
+    brandRow('Crunch', 'South Austin', 'c-sa'),
   ];
+  const sorted = sortBoardRows(rows.slice(), 0);
+  assert.deepEqual(sorted.map((r) => r.brand), ['Crunch', "Gold's Gym", 'LA Fitness']);
+});
 
-  const sorted = sortBoardRows(rows.slice(), now);
-  assert.deepEqual(sorted.map((r) => r.gymId), [
-    'open-5h',    // open-now, most time-left
-    'open-3h',    // open-now, less time-left
-    'later-3pm',  // opens 3pm (sooner)
-    'later-5pm',  // opens 5pm
-    'a-coming',   // done bucket, alpha by short/id
-    'z-done',
+test('sortBoardRows: within a brand, rows sort alphabetically by short', () => {
+  const rows = [
+    brandRow("Gold's Gym", 'South Central', 'g-sc'),
+    brandRow("Gold's Gym", 'Anderson Arbor', 'g-aa'),
+    brandRow("Gold's Gym", 'Highland', 'g-h'),
+  ];
+  const sorted = sortBoardRows(rows.slice(), 0);
+  assert.deepEqual(sorted.map((r) => r.short), ['Anderson Arbor', 'Highland', 'South Central']);
+});
+
+test('sortBoardRows: brands outside BRAND_PRIORITY sort after the named ones', () => {
+  const rows = [
+    brandRow('Crux', 'Central', 'crux-c'),
+    brandRow('Crunch', 'Round Rock', 'c-rr'),
+    brandRow('LA Fitness', 'Anderson Lane', 'laf-al'),
+    brandRow("Gold's Gym", 'Anderson Arbor', 'g-aa'),
+  ];
+  const sorted = sortBoardRows(rows.slice(), 0);
+  assert.deepEqual(sorted.map((r) => r.brand), ['Crunch', "Gold's Gym", 'LA Fitness', 'Crux']);
+});
+
+test('sortBoardRows: case-insensitive short sort, deterministic id tiebreak', () => {
+  const rows = [
+    brandRow('Crunch', 'south austin', 'c-2'),
+    brandRow('Crunch', 'South Austin', 'c-1'),
+    brandRow('Crunch', 'North ATX', 'c-n'),
+  ];
+  const sorted = sortBoardRows(rows.slice(), 0);
+  // North < South (case-insensitive); the two "south austin" rows fall back
+  // to id order (c-1 before c-2).
+  assert.deepEqual(sorted.map((r) => r.id), ['c-n', 'c-1', 'c-2']);
+});
+
+test('sortBoardRows: ordering ignores day/openness — coming-soon stays in brand slot', () => {
+  const rows = [
+    { ...brandRow("Gold's Gym", 'Highland', 'g-h'), day: { gaps: [], events: [], totalOpenMin: 0, windowCount: 0 } },
+    { ...brandRow('Crunch', 'North ATX', 'c-n'), status: 'coming-soon', day: null },
+    { ...brandRow('Crunch', 'Round Rock', 'c-rr'), day: { gaps: [], events: [], totalOpenMin: 0, windowCount: 0 } },
+  ];
+  const sorted = sortBoardRows(rows.slice(), 0);
+  // Crunch's coming-soon row stays grouped with Crunch's live row by brand,
+  // then alphabetical within: "North ATX" < "Round Rock". Gold's follows.
+  assert.deepEqual(sorted.map((r) => r.id), ['c-n', 'c-rr', 'g-h']);
+});
+
+test('sortBoardRows: full registry-shape sort produces the expected board order', () => {
+  // Mirrors the actual prod gym set (post South Central add) — verifies the
+  // final ordering users see on the home board.
+  const rows = [
+    brandRow('Crux', 'Central', 'crux-central'),
+    brandRow('Crunch', 'Round Rock', 'crunch-round-rock'),
+    brandRow('Crunch', 'South Austin', 'crunch-south-austin'),
+    brandRow('Crunch', 'North ATX', 'crunch-north-atx'),
+    brandRow('LA Fitness', 'Round Rock', 'lafitness-round-rock'),
+    brandRow('LA Fitness', 'Anderson Lane', 'lafitness-anderson-lane'),
+    brandRow("Gold's Gym", 'Anderson Arbor', 'golds-anderson-arbor'),
+    brandRow("Gold's Gym", 'Highland', 'golds-highland'),
+    brandRow("Gold's Gym", 'South Central', 'golds-south-central'),
+  ];
+  const sorted = sortBoardRows(rows.slice(), 0);
+  assert.deepEqual(sorted.map((r) => r.id), [
+    // Crunch — alpha by short
+    'crunch-north-atx',
+    'crunch-round-rock',
+    'crunch-south-austin',
+    // Gold's — alpha by short
+    'golds-anderson-arbor',
+    'golds-highland',
+    'golds-south-central',
+    // LA Fitness — alpha by short
+    'lafitness-anderson-lane',
+    'lafitness-round-rock',
+    // Other brands last
+    'crux-central',
   ]);
 });
