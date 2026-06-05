@@ -187,6 +187,31 @@ const GYMS = [
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.goldsgym.com/locations/tx/austin-highland/',
   },
+  {
+    id: 'golds-south-central',
+    name: "Gold's Gym — Austin South Central",
+    brand: "Gold's Gym",
+    short: 'South Central',
+    neighborhood: 'South Austin',
+    room: 'GGX Studio',
+    sourceHost: 'goldsgym.com',
+    provider: 'golds',
+    status: 'live',
+    tz: 'America/Chicago',
+    // Gold's location-page slug is the goldsgym.com /locations/tx/<slug>/
+    // segment; South Central's URL has no dashes ("austinsouthcentral"),
+    // unlike the older Anderson Arbor / Highland slugs.
+    providerConfig: { slug: 'austinsouthcentral' },
+    // StudioName values on the page are "Group Exercise South Central",
+    // "Group Cycle South Central", and "GOLD'S FIT South Central" — the
+    // golds provider's classifyRoom already routes these to GGX Studio /
+    // Cycle Studio / Gold's Fit respectively (the wood-floor practice room
+    // the user calls "Group Exercise" is GGX Studio internally).
+    danceRooms: ['GGX Studio'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.goldsgym.com/locations/tx/austinsouthcentral/',
+  },
 ];
 
 const byId = new Map(GYMS.map((g) => [g.id, g]));
