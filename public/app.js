@@ -452,28 +452,28 @@ function boardMessageHero(headText, eyebrowText) {
   return hero(eyebrowText, heroHead(accent(headText)));
 }
 
-// ---- board sort (mirrors lib/board.js boardSortKey for consistency) ----
+// ---- board sort (mirrors lib/board.js sortBoardRows for consistency) ----
+// Group by brand in a fixed priority, then alphabetically by short within
+// brand. Openness still drives badges/hero copy but no longer ordering.
 
-function sortBoardRows(rows, nowMs) {
+const BRAND_PRIORITY = ["Crunch", "Gold's Gym", 'LA Fitness'];
+
+function brandRank(brand) {
+  const i = BRAND_PRIORITY.indexOf(brand || '');
+  return i === -1 ? [BRAND_PRIORITY.length, (brand || '').toLowerCase()] : [i, ''];
+}
+
+function sortBoardRows(rows, _nowMs) {
   return rows.sort((a, b) => {
-    const [ab, as] = boardSortKey(a, nowMs);
-    const [bb, bs] = boardSortKey(b, nowMs);
-    if (ab !== bb) return ab - bb;
-    if (as !== bs) return as - bs;
-    const an = a.short || a.name || a.id || '';
-    const bn = b.short || b.name || b.id || '';
+    const [ar, at] = brandRank(a.brand);
+    const [br, bt] = brandRank(b.brand);
+    if (ar !== br) return ar - br;
+    if (at !== bt) return at < bt ? -1 : 1;
+    const an = (a.short || a.name || a.id || '').toLowerCase();
+    const bn = (b.short || b.name || b.id || '').toLowerCase();
     if (an !== bn) return an < bn ? -1 : 1;
     return (a.id || '') < (b.id || '') ? -1 : 1;
   });
-}
-
-function boardSortKey(row, nowMs) {
-  if (!row.day || row.status !== 'live' || !row.day.gaps?.length) return [2, 0];
-  const og = openGap(row, nowMs);
-  if (og) return [0, -(new Date(og.endDT).getTime() - nowMs)];
-  const ng = nextGap(row, nowMs);
-  if (ng) return [1, new Date(ng.startDT).getTime()];
-  return [2, 0];
 }
 
 function openGap(row, nowMs) {
