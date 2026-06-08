@@ -25,13 +25,61 @@
 //   providerConfig provider-specific knobs (locationId / slug / clubId)
 //   danceRooms    room names treated as dance-suitable wood-floor studios.
 //                 Open Floor shows free gaps for each of these separately.
-//   usableWindow  {start,end} local HH:MM bounds for the Open Floor view, so
-//                 24/7 clubs don't report the middle of the night as "free".
+//   usableWindow  {start,end} local HH:MM "wake-hours" cap so 24/7 clubs
+//                 don't report 3 AM as free. Soft user preference, not real
+//                 club hours.
+//   hoursByDay    actual club open/close per weekday (sun..sat keys), each
+//                 {open,close} HH:MM in gym tz. The effective Open-Floor
+//                 window for a date is the intersection of usableWindow and
+//                 hoursByDay[weekday] (see lib/availability.js
+//                 resolveDayWindow). Use {open:'00:00', close:'24:00'} on
+//                 days a 24/7 club has no constraint. Omitting hoursByDay
+//                 falls back to usableWindow alone.
 //   minGapMinutes shortest free block worth showing in Open Floor
 //   sourceUrl     public schedule page (footer source link href)
 
 const DEFAULT_USABLE_WINDOW = { start: '06:00', end: '22:00' };
 const DEFAULT_MIN_GAP = 30;
+
+// Shared weekly templates so the per-gym entries stay short and any future
+// hour correction lands in one place per brand. Cross-referenced against
+// each location's official site on 2026-06-07; spot-checked vs the
+// known-good Sunday closes (Gold's 21:00, LA Fitness 20:00).
+const ALL_DAY = { open: '00:00', close: '24:00' };
+const HOURS_24_7 = {
+  sun: ALL_DAY, mon: ALL_DAY, tue: ALL_DAY, wed: ALL_DAY,
+  thu: ALL_DAY, fri: ALL_DAY, sat: ALL_DAY,
+};
+const HOURS_LAFITNESS = {
+  // Mon-Thu 5a-11p, Fri 5a-10p, Sat-Sun 8a-8p.
+  sun: { open: '08:00', close: '20:00' },
+  mon: { open: '05:00', close: '23:00' },
+  tue: { open: '05:00', close: '23:00' },
+  wed: { open: '05:00', close: '23:00' },
+  thu: { open: '05:00', close: '23:00' },
+  fri: { open: '05:00', close: '22:00' },
+  sat: { open: '08:00', close: '20:00' },
+};
+const HOURS_GOLDS = {
+  // Mon-Fri 5a-11p, Sat-Sun 7a-9p.
+  sun: { open: '07:00', close: '21:00' },
+  mon: { open: '05:00', close: '23:00' },
+  tue: { open: '05:00', close: '23:00' },
+  wed: { open: '05:00', close: '23:00' },
+  thu: { open: '05:00', close: '23:00' },
+  fri: { open: '05:00', close: '23:00' },
+  sat: { open: '07:00', close: '21:00' },
+};
+const HOURS_CRUX = {
+  // Mon-Fri 6a-11p, Sat-Sun 10a-10p.
+  sun: { open: '10:00', close: '22:00' },
+  mon: { open: '06:00', close: '23:00' },
+  tue: { open: '06:00', close: '23:00' },
+  wed: { open: '06:00', close: '23:00' },
+  thu: { open: '06:00', close: '23:00' },
+  fri: { open: '06:00', close: '23:00' },
+  sat: { open: '10:00', close: '22:00' },
+};
 
 const GYMS = [
   {
@@ -54,6 +102,7 @@ const GYMS = [
     // "Climbing" from the class name. Only the Studio is dance-suitable.
     danceRooms: ['Studio'],
     usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_CRUX,
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.cruxclimbingcenter.com/central-austin/calendar/',
   },
@@ -71,6 +120,7 @@ const GYMS = [
     providerConfig: { slug: 'round-rock', clubId: 236 },
     danceRooms: ['Group Fitness'],
     usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_24_7,
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.crunch.com/locations/round-rock',
   },
@@ -88,6 +138,7 @@ const GYMS = [
     providerConfig: { slug: 'south-austin', clubId: 550 },
     danceRooms: ['Group Fitness'],
     usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_24_7,
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.crunch.com/locations/south-austin',
   },
@@ -105,6 +156,7 @@ const GYMS = [
     providerConfig: { slug: 'northatx' },
     danceRooms: ['Group Fitness'],
     usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_24_7,
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.crunch.com/locations/northatx',
   },
@@ -124,6 +176,7 @@ const GYMS = [
     // single "Group Fitness Studio" from the class name (cycle/aqua excluded).
     danceRooms: ['Group Fitness Studio'],
     usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_LAFITNESS,
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.lafitness.com/Pages/clubhome.aspx?clubid=1075',
   },
@@ -141,6 +194,7 @@ const GYMS = [
     providerConfig: { clubId: 1035 },
     danceRooms: ['Group Fitness Studio'],
     usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_LAFITNESS,
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.lafitness.com/Pages/clubhome.aspx?clubid=1035',
   },
@@ -163,6 +217,7 @@ const GYMS = [
     // pool route elsewhere; unknown classes default to GGX (conservative).
     danceRooms: ['GGX Studio'],
     usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_GOLDS,
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.goldsgym.com/locations/tx/austin-anderson-arbor/',
   },
@@ -184,6 +239,7 @@ const GYMS = [
     // danceable GGX Studio (consistent with Anderson Arbor).
     danceRooms: ['GGX Studio'],
     usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_GOLDS,
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.goldsgym.com/locations/tx/austin-highland/',
   },
@@ -209,6 +265,7 @@ const GYMS = [
     // the user calls "Group Exercise" is GGX Studio internally).
     danceRooms: ['GGX Studio'],
     usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_GOLDS,
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.goldsgym.com/locations/tx/austinsouthcentral/',
   },
@@ -242,6 +299,7 @@ function publicGym(g) {
     tz: g.tz,
     danceRooms: g.danceRooms,
     usableWindow: g.usableWindow,
+    hoursByDay: g.hoursByDay || null,
     minGapMinutes: g.minGapMinutes,
     sourceUrl: g.sourceUrl,
   };
