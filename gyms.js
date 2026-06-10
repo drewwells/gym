@@ -222,6 +222,34 @@ const GYMS = [
     sourceUrl: 'https://www.goldsgym.com/locations/tx/austin-anderson-arbor/',
   },
   {
+    id: 'golds-hesters-crossing',
+    name: "Gold's Gym — Hester's Crossing",
+    brand: "Gold's Gym",
+    short: "Hester's Crossing",
+    // Marketed by Gold's as "Austin Hester's Crossing" but the address (zip
+    // 78681) is Round Rock — match the convention of the other Round Rock
+    // entries (crunch-round-rock, lafitness-round-rock).
+    neighborhood: 'Round Rock, TX',
+    room: 'GGX Studio',
+    sourceHost: 'goldsgym.com',
+    provider: 'golds',
+    status: 'live',
+    tz: 'America/Chicago',
+    // URL slug runs the city + name together with no dashes, same as
+    // austinsouthcentral (and unlike the older austin-anderson-arbor /
+    // austin-highland slugs). Verified live on the goldsgym.com TX index.
+    providerConfig: { slug: 'austinhesterscrossing' },
+    // StudioName values on the page are "Group Exercise Hester's Crossing",
+    // "Group Cycle Hester's Crossing", and "GOLD'S FIT Hester's Crossing" —
+    // the golds provider's classifyRoom already routes these to GGX Studio /
+    // Cycle Studio / Gold's Fit, so no provider changes are needed.
+    danceRooms: ['GGX Studio'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_GOLDS,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.goldsgym.com/locations/tx/austinhesterscrossing/',
+  },
+  {
     id: 'golds-highland',
     name: "Gold's Gym — Highland",
     brand: "Gold's Gym",
