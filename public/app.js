@@ -772,21 +772,21 @@ function saveMyBrands() {
   try { localStorage.setItem(MY_BRANDS_KEY, JSON.stringify(pinnedBrandList())); } catch (_e) { /* ignore */ }
 }
 
-// Toggle one brand in/out of the pinned set. Pinning expands that group
-// (a newly-pinned brand should never start hidden); unpinning leaves
-// `brandCollapsed` alone (already-visible rows stay visible). Emptying the
-// set out causes every group to expand on the next render so the directory
-// matches the now all-brands hero.
+// Toggle one brand in/out of the pinned set. After every toggle we re-sync
+// the collapse state to match the prototype's spec: with 1+ pinned, ONLY
+// pinned groups are expanded (every other group collapses to its one-line
+// summary); with 0 pinned, every group expands so the directory matches
+// the all-brands hero. This overrides any manual chevron-taps the user
+// made between pin operations — the invariant is "pinned ⇔ expanded".
 function toggleMyBrand(brand) {
-  if (myBrands.has(brand)) {
-    myBrands.delete(brand);
-    if (myBrands.size === 0) brandCollapsed.clear();
-  } else {
-    myBrands.add(brand);
-    brandCollapsed.delete(brand);
-  }
+  if (myBrands.has(brand)) myBrands.delete(brand);
+  else myBrands.add(brand);
   saveMyBrands();
   brandOrder = orderBrandsPinnedFirst(apiBrandOrder, myBrands);
+  brandCollapsed.clear();
+  if (myBrands.size > 0) {
+    for (const b of apiBrandOrder) if (!myBrands.has(b)) brandCollapsed.add(b);
+  }
   renderBoard();
 }
 
