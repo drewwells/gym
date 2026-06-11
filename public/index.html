@@ -8,8 +8,11 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- "Sporty" pairing per design_handoff_brand_directory/README.md:
+       Big Shoulders Display 600-900 (display), DM Sans 400/500/700 (body),
+       DM Mono 400/500 (labels/eyebrows/statuses). -->
   <link
-    href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800;900&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -23,11 +26,16 @@
 
       <div id="dayStrip" class="day-strip" role="tablist" aria-label="Choose a day"></div>
 
-      <!-- Board view: hero summarizing all live gyms for the selected date,
-           then one row per gym sorted by open-now → opening-later → done. -->
+      <!-- Board view (the brand directory home). Hero summarizes "is anyone
+           open right now?" across every brand; the directory below it is a
+           collapsible accordion grouped by brand, with the user's pinned
+           brand at the top. Footer is the persistence/handoff strip. -->
       <div id="boardView" class="view view-board">
-        <div id="boardHero" class="hero board-hero"></div>
-        <div id="boardList" class="board-list" role="list"></div>
+        <!-- Outer wrapper is .board-hero only — no .hero class, otherwise
+             .hero's border-bottom + padding-double up with the inner. -->
+        <div id="boardHero" class="board-hero"></div>
+        <div id="boardList" class="brand-list" role="list"></div>
+        <div id="boardFooter" class="board-footer"></div>
       </div>
 
       <!-- Detail view: existing per-gym swipe deck. Hidden until the user

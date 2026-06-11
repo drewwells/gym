@@ -7,7 +7,11 @@
 // Fields:
 //   id            stable slug used in URLs and as the cache namespace
 //   name          long-form label (kept for logs / fallback)
-//   brand         picker grouping label, e.g. 'Crunch' / 'LA Fitness' / 'Crux'
+//   brand         picker grouping label, e.g. 'Crunch' / 'LA Fitness' / 'Crux'.
+//                 Also the key the brand-directory home view (public/app.js)
+//                 groups by; the user's pinned brand is persisted to
+//                 localStorage["openFloor.myBrand"] and validated against
+//                 the set of brands currently in this registry.
 //   short         picker row title + top-left identity, e.g. 'Round Rock'
 //   neighborhood  picker row subtitle, e.g. 'Round Rock, TX'
 //   room          singular human label for the dance studio used in the
