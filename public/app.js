@@ -458,15 +458,12 @@ function statusTiebreak(a, b) {
 // "⟨n⟩ of ⟨m⟩ floors have open time." (other-day branch).
 function buildBoardHero(decorated, isToday, nowMs, tz, date, scopeBrand) {
   const live = decorated.filter(({ row }) => row.status === 'live' && row.day);
-  // Noun chunks. Use a hero-shortened brand label so a long registry name
-  // ("Gold's Gym") collapses to the colloquial form ("Gold's") in 74px
-  // display copy — keeps "N {brand} floor / open right now." to two
-  // lines on narrow phones. When no brand or multiple brands are pinned
-  // we drop the brand from the headline and fall back to "floor"/"floors".
-  const brandShort = heroBrandLabel(scopeBrand);
-  const nounSingular = brandShort ? `${brandShort} floor` : 'floor';
-  const nounPlural = brandShort ? `${brandShort} floors` : 'floors';
-  const possessive = brandShort ? `Every ${brandShort} floor's` : "Every floor's";
+  // Headline is a single line at every viewport: count + "floors open" (or
+  // singular "floor"). Brand is intentionally dropped from the noun — long
+  // brand names like "LA Fitness" and "Gold's Gym" overflow the column at
+  // 74px display. The pinned brand context is carried by the eyebrow ("RIGHT
+  // NOW") and the sub line ("Best bet: <gym short>"), which is enough to
+  // make scope obvious without bloating the headline.
 
   if (isToday) {
     const openNow = live.filter(({ st }) => st.kind === 'open');
@@ -477,13 +474,7 @@ function buildBoardHero(decorated, isToday, nowMs, tz, date, scopeBrand) {
       const remainingMin = Math.round(best.st.remainingMs / 60000);
       return hero(
         `Right now · ${nowLabel}`,
-        heroHead(
-          accent(String(openNow.length)),
-          ' ',
-          openNow.length === 1 ? nounSingular : nounPlural,
-          br(),
-          'open right now.',
-        ),
+        heroHead(accent(String(openNow.length)), ' ', openNow.length === 1 ? 'floor' : 'floors', ' open'),
         sub(
           'Best bet: ',
           strong(bestBetLabel(best.row, scopeBrand)),
@@ -495,8 +486,8 @@ function buildBoardHero(decorated, isToday, nowMs, tz, date, scopeBrand) {
         ),
       );
     }
-    // Nobody open now — find the soonest upcoming start (gap start, or
-    // post-class gap if currently in-class).
+    // Nobody open now. Headline is the same "0 floors open"; sub-text
+    // disambiguates "opens later" vs "done for the day".
     const soon = live
       .map(({ row, st }) => {
         if (st.kind === 'upcoming') return { row, when: new Date(st.nextGap.startDT).getTime(), startDT: st.nextGap.startDT };
@@ -506,10 +497,9 @@ function buildBoardHero(decorated, isToday, nowMs, tz, date, scopeBrand) {
       .filter(Boolean)
       .sort((a, b) => a.when - b.when)[0];
     if (soon) {
-      const waitMin = Math.max(0, Math.round((soon.when - nowMs) / 60000));
       return hero(
         `Right now · ${nowLabel}`,
-        heroHead('No ', nounSingular, ' open', br(), 'for ', accent(durStr(waitMin)), '.'),
+        heroHead(accent('0'), ' floors open'),
         sub(
           'Next up: ',
           strong(bestBetLabel(soon.row, scopeBrand)),
@@ -521,26 +511,19 @@ function buildBoardHero(decorated, isToday, nowMs, tz, date, scopeBrand) {
     }
     return hero(
       `Right now · ${nowLabel}`,
-      heroHead(possessive, ' ', accent('done'), br(), 'for tonight.'),
-      sub('Check tomorrow — schedules refresh overnight.'),
+      heroHead(accent('0'), ' floors open'),
+      sub('Done for the day — check tomorrow.'),
     );
   }
 
-  // Other-day branch.
+  // Other-day branch. "{N} of {M} open" fits the same single-line slot and
+  // gives a coverage rollup; sub-text gives the total available time.
   const withOpen = live.filter(({ st }) => st.kind === 'other' && st.windowCount > 0);
   const totalMin = live.reduce((s, { st }) => s + (st.kind === 'other' ? st.totalOpenMin : 0), 0);
   const p = dateParts(date);
   return hero(
     `${p.dowLong} · ${p.month} ${p.dom}`,
-    heroHead(
-      accent(String(withOpen.length)),
-      ' of ',
-      String(live.length),
-      ' ',
-      live.length === 1 ? nounSingular : nounPlural,
-      br(),
-      'have open time.',
-    ),
+    heroHead(accent(String(withOpen.length)), ' of ', String(live.length), ' open'),
     sub(strong(durStr(totalMin)), ' of practice time — tap a floor for its windows.'),
   );
 }
@@ -554,14 +537,6 @@ function bestBetLabel(row, scopeBrand) {
   return `${row.brand || ''} ${short}`.trim();
 }
 
-// Hero-shortened brand label. "Gold's Gym" collapses to "Gold's" so the
-// 74px hero headline can carry "1 Gold's floor / open right now." in two
-// lines on narrow phones. Everywhere else (group header, footer, picker)
-// the registry's full brand name is used.
-function heroBrandLabel(brand) {
-  if (!brand) return null;
-  return brand.replace(/ Gym$/, '');
-}
 
 function buildBrandGroupHeader(brand, groupRows, isToday) {
   const isMine = myBrands.has(brand);
