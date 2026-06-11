@@ -1,20 +1,24 @@
-// Open Floor — global board + per-gym detail. Two views share the same shell:
+// Open Floor — brand-directory home + per-gym detail. Two views share one shell:
 //
-//   Board (/)         answer-first view across every live gym for the picked
-//                     date. Hero summarizes "is anyone open now?"; rows sort
-//                     open-now → opening-later → done; tapping a row drills
-//                     into the detail view for that gym.
+//   Board (/)         brand-directory home. The user picks "their" brand by
+//                     starring its header; that brand is pinned open at the
+//                     top, every other brand collapses to a one-line summary.
+//                     The pinned choice persists in localStorage as
+//                     `openFloor.myBrand`. The hero across the top stays
+//                     scoped to every brand (it answers "anyone open right
+//                     now?" globally, not just within your brand). Tapping a
+//                     gym row drills into the detail view.
 //
-//   Detail (/?gym=X)  per-gym swipe deck with the hero answering "can I
-//                     dance right now?" and the day's open windows + classes
-//                     beneath it. Top-row "back" returns to the board; the
+//   Detail (/?gym=X)  per-gym swipe deck (unchanged from the previous
+//                     handoff). Top-row "back" returns to the directory; the
 //                     bottom-sheet picker still lets you jump gyms inline.
 //
 // Both views share the same date strip, the same "now" tick, and the same
-// /api/availability cache for per-day rooms. The board additionally talks to
-// /api/board, which folds all live gyms' open-floor summaries for a single
-// date into one response (the server warms its weekly cache daily so this is
-// always a cache hit in steady state).
+// /api/availability cache for per-day rooms. The board talks to /api/board,
+// which folds all live gyms' open-floor summaries for a single date into one
+// response (the server warms its weekly cache daily, so this is a cache hit
+// in steady state). See design_handoff_brand_directory/README.md for the
+// design tokens, exact measurements, and the persistence contract.
 
 const STRIP_DAYS = 7;
 const SWIPE_THRESHOLD = 70;
@@ -35,10 +39,11 @@ const els = {
   stage: document.querySelector('.stage'),
   topRow: document.getElementById('topRow'),
   dayStrip: document.getElementById('dayStrip'),
-  // Board view.
+  // Board view (brand directory).
   boardView: document.getElementById('boardView'),
   boardHero: document.getElementById('boardHero'),
   boardList: document.getElementById('boardList'),
+  boardFooter: document.getElementById('boardFooter'),
   // Detail view.
   detailView: document.getElementById('detailView'),
   swipe: document.getElementById('swipe'),
@@ -50,6 +55,31 @@ const els = {
   sheetList: document.getElementById('sheetList'),
   sheetClose: document.getElementById('sheetClose'),
 };
+
+// Persistence contract: `localStorage["openFloor.myBrands"]` holds a JSON
+// array of pinned brand names exactly as they appear in /api/gyms, e.g.
+// `["Gold's Gym", "Crunch"]`. 0..N entries are valid:
+//   - missing / parse error / non-array → default to [DEFAULT_BRAND] on the
+//                                          first ever load (preserves the
+//                                          README's "Gold's pinned by
+//                                          default" contract).
+//   - []                                 → explicitly nothing pinned. Hero
+//                                          covers every brand, every group
+//                                          starts expanded.
+//   - one entry                          → that brand pinned. Hero scopes
+//                                          to it; other groups start
+//                                          collapsed.
+//   - many entries                       → all pinned. Hero scopes to the
+//                                          union of those brands' floors;
+//                                          non-pinned groups start
+//                                          collapsed.
+// Reads/writes are wrapped in try/catch for private-mode browsers. Unknown
+// stored brands are dropped from the loaded set (defensive against gym
+// removals). The older singular `openFloor.myBrand` key is migrated once
+// (string → array of one) so existing pins survive the rollout.
+const MY_BRANDS_KEY = 'openFloor.myBrands';
+const LEGACY_BRAND_KEY = 'openFloor.myBrand';
+const DEFAULT_BRAND = "Gold's Gym";
 
 // ---- global state ----
 
@@ -65,6 +95,18 @@ const dayCache = new Map();   // `${gymId}:${date}` -> parsed day | { error }
 const dayInflight = new Map();
 const boardCache = new Map(); // date -> { date, rows: parsed[] } | { error, date }
 const boardInflight = new Map();
+
+// Brand-directory state. `myBrands` is the user's pinned set (persisted —
+// 0..N brands); `brandCollapsed` tracks which groups are currently folded
+// (session-only). `brandOrder` is the brand-rendering order, derived once
+// we have data: pinned brands first (registry-order), then every other
+// brand (also registry-order).
+const myBrands = new Set();
+const brandCollapsed = new Set();
+let brandOrder = [];
+// Registry order from /api/gyms — preserved separately so we can rebuild
+// `brandOrder` whenever the pinned set changes.
+let apiBrandOrder = [];
 
 let tickTimer = null;
 
@@ -84,6 +126,18 @@ async function init() {
   const firstLive = data.gyms.find((g) => g.status === 'live') || data.gyms[0];
   anchorTz = firstLive ? firstLive.tz : DEFAULT_TZ;
   today = todayInTz(anchorTz);
+
+  // Brand registry-order from the API (deterministic per server-side sort).
+  // Pick the user's saved pinned set; if empty, every group starts
+  // expanded and the hero covers all brands. Otherwise pinned brands are
+  // first (registry order, all expanded) and the rest start collapsed.
+  apiBrandOrder = [];
+  for (const g of data.gyms) if (!apiBrandOrder.includes(g.brand)) apiBrandOrder.push(g.brand);
+  for (const b of loadMyBrands(apiBrandOrder, [DEFAULT_BRAND])) myBrands.add(b);
+  brandOrder = orderBrandsPinnedFirst(apiBrandOrder, myBrands);
+  if (myBrands.size > 0) {
+    for (const b of apiBrandOrder) if (!myBrands.has(b)) brandCollapsed.add(b);
+  }
 
   // 2. Wire shell-wide listeners (sheet, swipe, popstate).
   els.sheetScrim.addEventListener('click', closePicker);
@@ -208,20 +262,18 @@ function prefetchDetailWeek() {
 function renderTopRow() {
   els.topRow.innerHTML = '';
   if (view === 'board') {
-    // Identity on the board is the product itself — there's no single gym to
-    // name. Left half doubles as a non-tappable identity block.
-    els.topRow.appendChild(
-      h('div', { class: 'gym-btn gym-btn--static', attrs: { 'aria-label': 'All floors' } },
-        h('span', { class: 'gym-swatch', attrs: { 'aria-hidden': 'true' }, text: 'AF' }),
-        h('span', { class: 'gym-btn-text' },
-          h('span', { class: 'gym-brand', text: 'All Floors' }),
-          h('span', { class: 'gym-short-line' },
-            h('span', { class: 'gym-short', text: 'Austin' }),
-          ),
-        ),
-      ),
-    );
-    els.topRow.appendChild(h('span', { class: 'product', text: 'Open Floor' }));
+    // Brand-directory home: left = "OPEN FLOOR" wordmark, right = brand /
+    // floor counts ("4 brands · 11 floors"). Both mono, 10.5px, uppercase.
+    const liveCount = [...gyms.values()].filter((g) => g.status === 'live').length;
+    const totalCount = gyms.size;
+    const floors = totalCount === 1 ? '1 floor' : `${totalCount} floors`;
+    const brands = brandOrder.length === 1 ? '1 brand' : `${brandOrder.length} brands`;
+    els.topRow.appendChild(h('span', { class: 'top-row__wordmark', text: 'Open Floor' }));
+    els.topRow.appendChild(h('span', {
+      class: 'top-row__meta',
+      text: `${brands} · ${floors}`,
+      attrs: { 'aria-label': `${brandOrder.length} brands, ${liveCount} live of ${totalCount} total floors` },
+    }));
     return;
   }
 
@@ -286,7 +338,7 @@ function syncDayStrip() {
   if (active) active.scrollIntoView({ inline: 'center', block: 'nearest' });
 }
 
-// ---- board view ----
+// ---- board view (brand directory) ----
 
 function renderBoard() {
   const date = addDays(today, dayOffset);
@@ -297,200 +349,473 @@ function renderBoard() {
     els.boardHero.innerHTML = '';
     els.boardHero.appendChild(boardMessageHero('Reading every floor', 'One sec'));
     els.boardList.innerHTML = '';
+    renderBoardFooter();
     return;
   }
   if (rec.error) {
     els.boardHero.innerHTML = '';
     els.boardHero.appendChild(boardMessageHero(rec.error, "Couldn't load the board"));
     els.boardList.innerHTML = '';
+    renderBoardFooter();
     return;
   }
 
   const tz = anchorTz;
   const nowMs = Date.now();
-  const rows = rec.rows.slice();
-  sortBoardRows(rows, nowMs);
+  // The /api/board response already returns rows in deterministic
+  // [brand, short, id] order (lib/board.js sortBoardRows). Decorate each row
+  // with its typed status so the hero and within-group sort share one
+  // computation — and so we don't have to re-walk `day.gaps` from the
+  // template path.
+  const decorated = rec.rows.map((row) => ({ row, st: gymStatus(row, nowMs, isToday) }));
 
-  // Hero.
+  // Hero. Scope to the pinned brands when 1+ are set so the headline
+  // answers "what's open in MY brands right now?" instead of broadcasting
+  // across the city. Falls back to the all-brands hero when myBrands is
+  // empty (the user explicitly un-pinned everything).
+  const heroRows = myBrands.size > 0
+    ? decorated.filter((r) => myBrands.has(r.row.brand))
+    : decorated;
   els.boardHero.innerHTML = '';
-  els.boardHero.appendChild(buildBoardHero(rows, isToday, nowMs, tz, date));
+  els.boardHero.appendChild(buildBoardHero(heroRows, isToday, nowMs, tz, date, scopeBrandName()));
 
-  // Rows.
+  // Brand-grouped accordion.
   els.boardList.innerHTML = '';
-  for (const r of rows) els.boardList.appendChild(buildBoardRow(r, isToday, nowMs, tz));
+  for (const brand of brandOrder) {
+    const groupRows = decorated.filter((r) => r.row.brand === brand);
+    if (!groupRows.length) continue;
+    // Within a group: open-now (most time left first) → opens-later
+    // (soonest first) → done / no-time last. Matches README spec.
+    groupRows.sort((a, b) => statusRank(a.st) - statusRank(b.st) || statusTiebreak(a.st, b.st));
+    els.boardList.appendChild(buildBrandGroupHeader(brand, groupRows, isToday));
+    if (!brandCollapsed.has(brand)) {
+      for (const { row, st } of groupRows) {
+        els.boardList.appendChild(buildGymRow(row, st, tz));
+      }
+    }
+  }
+
+  renderBoardFooter();
 }
 
-// Compute "what's the headline for the board?" from the sorted rows + clock.
-// See task spec §2 for the exact answer-first language.
-function buildBoardHero(rows, isToday, nowMs, tz, date) {
-  const live = rows.filter((r) => r.status === 'live' && r.day);
-  const openNow = live.filter((r) => roomOpenNow(r, nowMs));
+// Per-gym typed status. `other` is the non-today branch; the today branch
+// distinguishes between actively-open / class-blocking / opening-later /
+// done so the hero and row UIs can speak in the right tense.
+function gymStatus(row, nowMs, isToday) {
+  if (row.status === 'coming-soon') return { kind: 'soon' };
+  if (row.error || !row.day) return { kind: 'error' };
+  if (!isToday) {
+    const gaps = row.day.gaps || [];
+    return {
+      kind: 'other',
+      totalOpenMin: row.day.totalOpenMin || 0,
+      windowCount: row.day.windowCount || gaps.length,
+      first: gaps[0] || null,
+    };
+  }
+  const gaps = row.day.gaps || [];
+  for (const g of gaps) {
+    const start = new Date(g.startDT).getTime();
+    const end = new Date(g.endDT).getTime();
+    if (nowMs >= start && nowMs < end) {
+      return { kind: 'open', remainingMs: end - nowMs, endDT: g.endDT, gap: g };
+    }
+  }
+  const events = row.day.events || [];
+  for (const e of events) {
+    const start = new Date(e.startDT).getTime();
+    const end = new Date(e.endDT).getTime();
+    if (nowMs >= start && nowMs < end) {
+      const nextGap = gaps.find((g) => new Date(g.startDT).getTime() >= end) || null;
+      return { kind: 'inClass', cls: e, until: end, nextGap };
+    }
+  }
+  const next = gaps.find((g) => new Date(g.startDT).getTime() > nowMs);
+  if (next) return { kind: 'upcoming', nextGap: next };
+  return { kind: 'done' };
+}
+
+function statusRank(st) {
+  if (st.kind === 'open') return 0;
+  if (st.kind === 'upcoming' || st.kind === 'inClass') return 1;
+  if (st.kind === 'other') return st.windowCount > 0 ? 0 : 2;
+  return 2; // done / error / soon
+}
+
+function statusTiebreak(a, b) {
+  // Among "open" rows, most time left first. Among "upcoming/inClass", soonest
+  // start first. Among "other" rows with time, most total time first.
+  if (a.kind === 'open' && b.kind === 'open') return b.remainingMs - a.remainingMs;
+  if (a.kind === 'upcoming' && b.kind === 'upcoming')
+    return new Date(a.nextGap.startDT) - new Date(b.nextGap.startDT);
+  if (a.kind === 'inClass' && b.kind === 'inClass') return a.until - b.until;
+  if (a.kind === 'other' && b.kind === 'other') return b.totalOpenMin - a.totalOpenMin;
+  return 0;
+}
+
+// Hero: answer-first "X floors open right now" / "No floor open for ⟨dur⟩" /
+// "Every floor's done for tonight." (today branch), or
+// "⟨n⟩ of ⟨m⟩ floors have open time." (other-day branch).
+function buildBoardHero(decorated, isToday, nowMs, tz, date, scopeBrand) {
+  const live = decorated.filter(({ row }) => row.status === 'live' && row.day);
+  // Noun chunks. Use a hero-shortened brand label so a long registry name
+  // ("Gold's Gym") collapses to the colloquial form ("Gold's") in 74px
+  // display copy — keeps "N {brand} floor / open right now." to two
+  // lines on narrow phones. When no brand or multiple brands are pinned
+  // we drop the brand from the headline and fall back to "floor"/"floors".
+  const brandShort = heroBrandLabel(scopeBrand);
+  const nounSingular = brandShort ? `${brandShort} floor` : 'floor';
+  const nounPlural = brandShort ? `${brandShort} floors` : 'floors';
+  const possessive = brandShort ? `Every ${brandShort} floor's` : "Every floor's";
 
   if (isToday) {
+    const openNow = live.filter(({ st }) => st.kind === 'open');
+    const nowLabel = fmt12Long(nowMinutesInTz(tz));
     if (openNow.length) {
-      // Best bet = the open floor with the most time left now.
-      const best = openNow.reduce((a, b) => (timeLeft(a, nowMs) >= timeLeft(b, nowMs) ? a : b));
-      const bestEnd = openGap(best, nowMs).endDT;
-      const remaining = timeLeft(best, nowMs);
+      // Best bet = the open floor with the most time left right now.
+      const best = openNow.reduce((a, b) => (a.st.remainingMs >= b.st.remainingMs ? a : b));
+      const remainingMin = Math.round(best.st.remainingMs / 60000);
       return hero(
-        'Right now',
-        heroHead(accent(String(openNow.length)), ` ${openNow.length === 1 ? 'floor' : 'floors'}`, br(), 'open right now'),
-        sub('Best bet: ', strong(best.short || best.name), ' — free for ', strong(durStr(Math.round(remaining / 60000))), ', until ', strong(fmt12LongIso(bestEnd, tz)), '.'),
-        heroFooter(`Now · ${fmt12Long(nowMinutesInTz(tz))}`, fmt12LongIso(bestEnd, tz)),
+        `Right now · ${nowLabel}`,
+        heroHead(
+          accent(String(openNow.length)),
+          ' ',
+          openNow.length === 1 ? nounSingular : nounPlural,
+          br(),
+          'open right now.',
+        ),
+        sub(
+          'Best bet: ',
+          strong(bestBetLabel(best.row, scopeBrand)),
+          ' — free for ',
+          strong(durStr(remainingMin)),
+          ', until ',
+          strong(fmt12LongIso(best.st.endDT, tz)),
+          '.',
+        ),
       );
     }
-    // Anyone opening later today?
-    const upcoming = live
-      .map((r) => ({ row: r, gap: nextGap(r, nowMs) }))
-      .filter((x) => x.gap)
-      .sort((a, b) => new Date(a.gap.startDT) - new Date(b.gap.startDT));
-    if (upcoming.length) {
-      const next = upcoming[0];
-      const wait = new Date(next.gap.startDT).getTime() - nowMs;
+    // Nobody open now — find the soonest upcoming start (gap start, or
+    // post-class gap if currently in-class).
+    const soon = live
+      .map(({ row, st }) => {
+        if (st.kind === 'upcoming') return { row, when: new Date(st.nextGap.startDT).getTime(), startDT: st.nextGap.startDT };
+        if (st.kind === 'inClass' && st.nextGap) return { row, when: new Date(st.nextGap.startDT).getTime(), startDT: st.nextGap.startDT };
+        return null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.when - b.when)[0];
+    if (soon) {
+      const waitMin = Math.max(0, Math.round((soon.when - nowMs) / 60000));
       return hero(
-        'Right now',
-        heroHead('No floor open for ', accent(durStr(Math.round(wait / 60000)))),
-        sub('Next up: ', strong(next.row.short || next.row.name), ' opens at ', strong(fmt12LongIso(next.gap.startDT, tz)), '.'),
-        heroFooter(`Now · ${fmt12Long(nowMinutesInTz(tz))}`, fmt12LongIso(next.gap.startDT, tz)),
+        `Right now · ${nowLabel}`,
+        heroHead('No ', nounSingular, ' open', br(), 'for ', accent(durStr(waitMin)), '.'),
+        sub(
+          'Next up: ',
+          strong(bestBetLabel(soon.row, scopeBrand)),
+          ' opens at ',
+          strong(fmt12LongIso(soon.startDT, tz)),
+          '.',
+        ),
       );
     }
     return hero(
-      "That's a wrap on today",
-      heroHead("Every floor's ", accent('done'), br(), 'for tonight'),
+      `Right now · ${nowLabel}`,
+      heroHead(possessive, ' ', accent('done'), br(), 'for tonight.'),
+      sub('Check tomorrow — schedules refresh overnight.'),
     );
   }
 
-  // Non-today dates: focus on coverage and total open time.
-  const withOpen = live.filter((r) => r.day && r.day.windowCount > 0);
-  const totalMin = live.reduce((s, r) => s + (r.day?.totalOpenMin || 0), 0);
+  // Other-day branch.
+  const withOpen = live.filter(({ st }) => st.kind === 'other' && st.windowCount > 0);
+  const totalMin = live.reduce((s, { st }) => s + (st.kind === 'other' ? st.totalOpenMin : 0), 0);
   const p = dateParts(date);
   return hero(
     `${p.dowLong} · ${p.month} ${p.dom}`,
-    heroHead(accent(String(withOpen.length)), ` of ${live.length} `, br(), `${live.length === 1 ? 'floor has' : 'floors have'} open time`),
-    sub(strong(durStr(totalMin)), ' available across every floor.'),
+    heroHead(
+      accent(String(withOpen.length)),
+      ' of ',
+      String(live.length),
+      ' ',
+      live.length === 1 ? nounSingular : nounPlural,
+      br(),
+      'have open time.',
+    ),
+    sub(strong(durStr(totalMin)), ' of practice time — tap a floor for its windows.'),
   );
 }
 
-function buildBoardRow(row, isToday, nowMs, tz) {
-  const live = row.status === 'live' && row.day;
-  const soon = row.status === 'coming-soon';
-  const node = h('button', {
-    class: `board-row${live ? '' : ' is-muted'}${soon ? ' is-soon' : ''}${row.error ? ' is-error' : ''}`,
+// Best-bet / next-up label: drop the leading brand once the hero is already
+// brand-scoped (saying "Gold's Gym Highland" inside a Gold's-scoped hero
+// would be redundant); otherwise keep the brand prefix.
+function bestBetLabel(row, scopeBrand) {
+  const short = (row.short || row.name || '').trim();
+  if (scopeBrand && row.brand === scopeBrand) return short;
+  return `${row.brand || ''} ${short}`.trim();
+}
+
+// Hero-shortened brand label. "Gold's Gym" collapses to "Gold's" so the
+// 74px hero headline can carry "1 Gold's floor / open right now." in two
+// lines on narrow phones. Everywhere else (group header, footer, picker)
+// the registry's full brand name is used.
+function heroBrandLabel(brand) {
+  if (!brand) return null;
+  return brand.replace(/ Gym$/, '');
+}
+
+function buildBrandGroupHeader(brand, groupRows, isToday) {
+  const isMine = myBrands.has(brand);
+  const isCollapsed = brandCollapsed.has(brand);
+  const liveRows = groupRows.filter(({ row }) => row.status === 'live' && row.day);
+  const openish = liveRows.filter(({ st }) => st.kind === 'open' || (st.kind === 'other' && st.windowCount > 0)).length;
+  const metaText = isToday
+    ? `${openish} of ${liveRows.length} open`
+    : `${openish} of ${liveRows.length} with time`;
+
+  const head = h('button', {
+    class: `brand-head${isCollapsed ? ' is-collapsed' : ''}`,
     attrs: {
-      type: 'button', role: 'listitem',
-      'aria-label': `${row.short || row.name} — ${row.brand || ''}`,
+      type: 'button',
+      'aria-expanded': String(!isCollapsed),
+      'aria-label': `${brand} — ${metaText}. Tap to ${isCollapsed ? 'expand' : 'collapse'}.`,
     },
   });
 
-  // Left: brand swatch.
-  const swatch = h('span', { class: 'board-row__swatch', attrs: { 'aria-hidden': 'true' }, text: brandMark(row.brand) });
+  head.appendChild(h('span', { class: 'brand-head__swatch', attrs: { 'aria-hidden': 'true' }, text: brandMark(brand) }));
 
-  // Middle: name + brand + status line.
-  const name = h('div', { class: 'board-row__name' },
-    h('div', { class: 'board-row__brand', text: row.brand || '' }),
-    h('div', { class: 'board-row__short', text: row.short || row.name || '' }),
-    h('div', { class: 'board-row__status', text: rowStatusLine(row, isToday, nowMs, tz) }),
+  const name = h('span', { class: 'brand-head__name' },
+    document.createTextNode(brand),
   );
+  if (isMine) name.appendChild(h('span', { class: 'brand-head__yours', text: 'Yours' }));
+  head.appendChild(name);
 
-  // Right: headline metric.
-  const metric = h('div', { class: 'board-row__metric' }, ...rowMetric(row, isToday, nowMs, tz));
+  head.appendChild(h('span', { class: 'brand-head__meta', text: metaText }));
 
-  node.appendChild(swatch);
-  node.appendChild(name);
-  node.appendChild(metric);
+  // Star toggles this brand in/out of the pinned set — `stopPropagation`
+  // so the same tap doesn't collapse the group. Any 0..N brands can be
+  // pinned: tap ☆ to add, tap ★ to remove. When the set hits empty,
+  // every group expands and the hero re-scopes to all floors.
+  const star = h('span', {
+    class: `brand-head__star${isMine ? ' is-yours' : ''}`,
+    attrs: {
+      role: 'button',
+      tabindex: '0',
+      'aria-pressed': String(isMine),
+      'aria-label': isMine ? `Unpin ${brand}` : `Pin ${brand}`,
+      title: isMine ? 'Tap to unpin' : 'Make this one of yours',
+    },
+    text: isMine ? '★' : '☆',
+  });
+  const onStar = () => { toggleMyBrand(brand); };
+  star.addEventListener('click', (e) => { e.stopPropagation(); onStar(); });
+  star.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    e.stopPropagation();
+    onStar();
+  });
+  head.appendChild(star);
 
-  if (!soon) {
+  head.appendChild(h('span', { class: 'brand-head__chev', attrs: { 'aria-hidden': 'true' }, text: '▸' }));
+
+  head.addEventListener('click', () => toggleBrand(brand));
+  return head;
+}
+
+function buildGymRow(row, st, tz) {
+  const isOpen = st.kind === 'open';
+  const isSoon = st.kind === 'soon';
+  const dim = st.kind === 'done' || st.kind === 'error' || st.kind === 'soon'
+    || (st.kind === 'other' && (!st.windowCount || st.windowCount === 0));
+
+  const node = h('button', {
+    class: `gym-row${isOpen ? ' is-open' : ''}${dim ? ' is-dim' : ''}${isSoon ? ' is-soon' : ''}`,
+    attrs: {
+      type: 'button', role: 'listitem',
+      'aria-label': `${row.brand || ''} ${row.short || row.name || ''}`.trim(),
+    },
+  });
+
+  node.appendChild(h('span', {
+    class: 'gym-row__swatch',
+    attrs: { 'aria-hidden': 'true' },
+    text: brandMark(row.brand),
+  }));
+
+  const status = rowStatusLine(st, tz);
+  const statusEl = h('span', { class: `gym-row__status${status.live ? ' is-live' : ''}` });
+  if (status.live) statusEl.appendChild(h('span', { class: 'gym-row__live-dot', attrs: { 'aria-hidden': 'true' } }));
+  statusEl.appendChild(document.createTextNode(status.text));
+
+  node.appendChild(h('span', { class: 'gym-row__name' },
+    h('span', { class: 'gym-row__short', text: row.short || row.name || '' }),
+    statusEl,
+  ));
+
+  const m = rowMetric(st, tz);
+  node.appendChild(h('span', { class: 'gym-row__metric' },
+    h('span', { class: `gym-row__metric-num${m.muted ? ' is-muted' : ''}`, text: m.num }),
+    h('span', { class: 'gym-row__metric-label', text: m.label }),
+  ));
+
+  if (isSoon) {
+    node.disabled = true;
+  } else {
     node.addEventListener('click', () => {
       const d = dayOffset === 0 ? null : addDays(today, dayOffset);
-      navigate({ gymId: row.id || row.gymId, date: d });
+      navigate({ gymId: row.id, date: d });
     });
-  } else {
-    node.disabled = true;
   }
   return node;
 }
 
-function rowStatusLine(row, isToday, nowMs, tz) {
-  if (row.status === 'coming-soon') return 'Coming soon';
-  if (row.error || !row.day) return "Couldn't read schedule";
-  if (isToday) {
-    const og = openGap(row, nowMs);
-    if (og) return `Open now · until ${fmt12LongIso(og.endDT, tz)}`;
-    const ng = nextGap(row, nowMs);
-    if (ng) return `Opens ${fmt12LongIso(ng.startDT, tz)} · ${durStr(ng.minutes)} free`;
-    return 'Done for today';
-  }
-  if (row.day.windowCount === 0) return 'Fully booked';
-  return `${row.day.windowCount} ${row.day.windowCount === 1 ? 'window' : 'windows'}`;
+// Status-line and metric phrasing per the design spec. Live=true puts the
+// row's status line in accent green with a 6px accent dot — only for "open
+// now". The metric label is always mono 9px uppercase.
+function rowStatusLine(st, tz) {
+  if (st.kind === 'open')
+    return { text: `Open now · until ${fmt12LongIso(st.endDT, tz)}`, live: true };
+  if (st.kind === 'upcoming')
+    return { text: `Opens ${fmt12LongIso(st.nextGap.startDT, tz)} · ${durStr(st.nextGap.minutes)} free`, live: false };
+  if (st.kind === 'inClass')
+    return { text: `${st.cls.name} on the floor`, live: false };
+  if (st.kind === 'other')
+    return st.windowCount > 0
+      ? { text: `First window ${fmt12LongIso(st.first.startDT, tz)}`, live: false }
+      : { text: 'Studio fully booked', live: false };
+  if (st.kind === 'soon') return { text: 'Coming soon', live: false };
+  if (st.kind === 'error') return { text: "Couldn't read schedule", live: false };
+  return { text: 'Done for today', live: false };
 }
 
-function rowMetric(row, isToday, nowMs, tz) {
-  if (row.status === 'coming-soon') return [h('span', { class: 'board-row__metric-sm', text: '—' })];
-  if (row.error || !row.day) return [h('span', { class: 'board-row__metric-sm', text: '—' })];
-  if (isToday) {
-    const og = openGap(row, nowMs);
-    if (og) {
-      const mins = Math.max(0, Math.round((new Date(og.endDT).getTime() - nowMs) / 60000));
-      return [
-        h('span', { class: 'board-row__metric-big', text: durStr(mins) }),
-        h('span', { class: 'board-row__metric-sm', text: 'left' }),
-      ];
-    }
-    const ng = nextGap(row, nowMs);
-    if (ng) return [h('span', { class: 'board-row__metric-big', text: fmt12Iso(ng.startDT, tz) })];
-    return [h('span', { class: 'board-row__metric-sm', text: '—' })];
+function rowMetric(st, tz) {
+  if (st.kind === 'open') {
+    const min = Math.max(0, Math.round(st.remainingMs / 60000));
+    return { num: durStr(min), label: 'open now', muted: false };
   }
-  // Non-today: show total open time for the day.
-  if (!row.day.totalOpenMin) return [h('span', { class: 'board-row__metric-sm', text: '—' })];
-  return [
-    h('span', { class: 'board-row__metric-big', text: durStr(row.day.totalOpenMin) }),
-    h('span', { class: 'board-row__metric-sm', text: 'open' }),
-  ];
+  if (st.kind === 'upcoming')
+    return { num: fmt12Iso(st.nextGap.startDT, tz), label: 'opens', muted: true };
+  if (st.kind === 'inClass')
+    return st.nextGap
+      ? { num: fmt12Iso(st.nextGap.startDT, tz), label: 'free at', muted: true }
+      : { num: '—', label: 'in class', muted: true };
+  if (st.kind === 'other') {
+    if (st.windowCount > 0) {
+      const noun = st.windowCount === 1 ? 'window' : 'windows';
+      return { num: durStr(st.totalOpenMin), label: `${st.windowCount} ${noun}`, muted: false };
+    }
+    return { num: '—', label: 'no time', muted: true };
+  }
+  if (st.kind === 'soon') return { num: '—', label: 'soon', muted: true };
+  if (st.kind === 'error') return { num: '—', label: 'unknown', muted: true };
+  return { num: '—', label: 'done', muted: true };
+}
+
+function renderBoardFooter() {
+  els.boardFooter.innerHTML = '';
+  const list = pinnedBrandList();
+  if (list.length === 0) {
+    els.boardFooter.appendChild(h('span', { class: 'board-footer__pinned', text: 'No brand pinned' }));
+    els.boardFooter.appendChild(h('span', { class: 'board-footer__hint', text: 'Tap ☆ to pin one' }));
+    return;
+  }
+  // Compact "★ Gold's Gym, Crunch · saved on this device" — relies on the
+  // footer's ellipsis fallback when the brand list outruns the row.
+  els.boardFooter.appendChild(h('span', {
+    class: 'board-footer__pinned',
+    text: `★ ${list.join(', ')} · saved on this device`,
+  }));
+  els.boardFooter.appendChild(h('span', {
+    class: 'board-footer__hint',
+    text: list.length === 1 ? 'Tap ★ to unpin' : 'Tap ★ to unpin one',
+  }));
 }
 
 function boardMessageHero(headText, eyebrowText) {
   return hero(eyebrowText, heroHead(accent(headText)));
 }
 
-// ---- board sort (mirrors lib/board.js sortBoardRows for consistency) ----
-// Group by brand in a fixed priority, then alphabetically by short within
-// brand. Openness still drives badges/hero copy but no longer ordering.
+// ---- brand-directory state helpers ----
 
-const BRAND_PRIORITY = ["Crunch", "Gold's Gym", 'LA Fitness'];
-
-function brandRank(brand) {
-  const i = BRAND_PRIORITY.indexOf(brand || '');
-  return i === -1 ? [BRAND_PRIORITY.length, (brand || '').toLowerCase()] : [i, ''];
+// Load the persisted pinned set. Three possibilities, in order:
+//   1. New plural key `openFloor.myBrands` holds a JSON array → use it
+//      (dropping any brands that aren't currently in the registry).
+//   2. Legacy `openFloor.myBrand` holds a single brand string → migrate it
+//      into the array key (one entry; empty string means "un-pinned").
+//   3. Neither key → first-ever load; return the README-default fallback
+//      (one entry: Gold's Gym).
+function loadMyBrands(allBrands, fallback) {
+  try {
+    const raw = localStorage.getItem(MY_BRANDS_KEY);
+    if (raw != null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((b) => typeof b === 'string' && allBrands.includes(b));
+      }
+    }
+    // Migrate from the singular key if it's the only thing we have.
+    const legacy = localStorage.getItem(LEGACY_BRAND_KEY);
+    if (legacy != null) {
+      const migrated = legacy === '' ? []
+        : (allBrands.includes(legacy) ? [legacy] : []);
+      try {
+        localStorage.setItem(MY_BRANDS_KEY, JSON.stringify(migrated));
+        localStorage.removeItem(LEGACY_BRAND_KEY);
+      } catch (_e) { /* ignore */ }
+      return migrated;
+    }
+  } catch (_e) { /* private mode, bad JSON, etc. */ }
+  return (fallback || []).filter((b) => allBrands.includes(b));
 }
 
-function sortBoardRows(rows, _nowMs) {
-  return rows.sort((a, b) => {
-    const [ar, at] = brandRank(a.brand);
-    const [br, bt] = brandRank(b.brand);
-    if (ar !== br) return ar - br;
-    if (at !== bt) return at < bt ? -1 : 1;
-    const an = (a.short || a.name || a.id || '').toLowerCase();
-    const bn = (b.short || b.name || b.id || '').toLowerCase();
-    if (an !== bn) return an < bn ? -1 : 1;
-    return (a.id || '') < (b.id || '') ? -1 : 1;
-  });
+function saveMyBrands() {
+  try { localStorage.setItem(MY_BRANDS_KEY, JSON.stringify(pinnedBrandList())); } catch (_e) { /* ignore */ }
 }
 
-function openGap(row, nowMs) {
-  if (!row.day) return null;
-  return row.day.gaps.find((g) => nowMs >= new Date(g.startDT).getTime() && nowMs < new Date(g.endDT).getTime()) || null;
+// Toggle one brand in/out of the pinned set. Pinning expands that group
+// (a newly-pinned brand should never start hidden); unpinning leaves
+// `brandCollapsed` alone (already-visible rows stay visible). Emptying the
+// set out causes every group to expand on the next render so the directory
+// matches the now all-brands hero.
+function toggleMyBrand(brand) {
+  if (myBrands.has(brand)) {
+    myBrands.delete(brand);
+    if (myBrands.size === 0) brandCollapsed.clear();
+  } else {
+    myBrands.add(brand);
+    brandCollapsed.delete(brand);
+  }
+  saveMyBrands();
+  brandOrder = orderBrandsPinnedFirst(apiBrandOrder, myBrands);
+  renderBoard();
 }
 
-function nextGap(row, nowMs) {
-  if (!row.day) return null;
-  return row.day.gaps.find((g) => new Date(g.startDT).getTime() > nowMs) || null;
+// Brand name the hero should weave into its copy ("5 Gold's floors open…").
+// Only meaningful when exactly one brand is pinned — with 0 or 2+ pinned,
+// the hero stays generic ("5 floors open…") and the scope is implicit.
+function scopeBrandName() {
+  return myBrands.size === 1 ? [...myBrands][0] : null;
 }
 
-function roomOpenNow(row, nowMs) { return !!openGap(row, nowMs); }
+// Pinned brands rendered in registry order (stable across sessions).
+function pinnedBrandList() {
+  return apiBrandOrder.filter((b) => myBrands.has(b));
+}
 
-function timeLeft(row, nowMs) {
-  const og = openGap(row, nowMs);
-  return og ? new Date(og.endDT).getTime() - nowMs : 0;
+function toggleBrand(brand) {
+  if (brandCollapsed.has(brand)) brandCollapsed.delete(brand);
+  else brandCollapsed.add(brand);
+  renderBoard();
+}
+
+// Registry-order pinned brands first, then registry-order unpinned brands.
+// `pinned` is a Set so we keep the order from `brands` (the API order)
+// rather than insertion order into the set.
+function orderBrandsPinnedFirst(brands, pinned) {
+  if (!pinned || pinned.size === 0) return brands.slice();
+  const head = brands.filter((b) => pinned.has(b));
+  const tail = brands.filter((b) => !pinned.has(b));
+  return [...head, ...tail];
 }
 
 // ---- board data loading ----
