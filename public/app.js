@@ -1047,7 +1047,10 @@ function buildList(day, s, nowMin, isToday) {
   let gaps = day.gaps;
   if (isToday && s) {
     if (s.kind === 'open') gaps = day.gaps.filter((g) => g.start > s.endsAt);
-    else if (s.kind === 'inClass') gaps = day.gaps.filter((g) => g.start > s.until);
+    // `>=` (not `>`) so the window that *opens the moment this class ends*
+    // (g.start === e.end === s.until) is the first thing listed under
+    // "After this class" — matches the hero's `nextG` calc (line 943).
+    else if (s.kind === 'inClass') gaps = day.gaps.filter((g) => g.start >= s.until);
     else if (s.kind === 'upcoming') gaps = day.gaps.filter((g) => g.start >= s.nextGap.start);
     else if (s.kind === 'doneForDay') gaps = [];
   }
