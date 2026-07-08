@@ -74,6 +74,19 @@ const HOURS_GOLDS = {
   fri: { open: '05:00', close: '23:00' },
   sat: { open: '07:00', close: '21:00' },
 };
+const HOURS_GOLDS_KTX = {
+  // Knoxville, TN Gold's (Eastern tz). West Knoxville/Farragut open 4a, Chapman
+  // 5a — both clipped to the 06:00 usableWindow cap, so one template covers all
+  // three. Key difference vs the Austin template: Sat AND Sun close 19:00 (7p),
+  // not 21:00. Verified on each location page 2026-07-08.
+  sun: { open: '07:00', close: '19:00' },
+  mon: { open: '05:00', close: '22:00' },
+  tue: { open: '05:00', close: '22:00' },
+  wed: { open: '05:00', close: '22:00' },
+  thu: { open: '05:00', close: '22:00' },
+  fri: { open: '05:00', close: '22:00' },
+  sat: { open: '07:00', close: '19:00' },
+};
 const HOURS_CRUX = {
   // Mon-Fri 6a-11p, Sat-Sun 10a-10p.
   sun: { open: '10:00', close: '22:00' },
@@ -300,6 +313,68 @@ const GYMS = [
     hoursByDay: HOURS_GOLDS,
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.goldsgym.com/locations/tx/austinsouthcentral/',
+  },
+
+  // --- Knoxville, TN Gold's (TEMPORARY) ---------------------------------
+  // Drew is in Knoxville for a couple of weeks and has a Gold's membership.
+  // These three share the corporate goldsgym.com embedded-schedule template
+  // (same golds provider) but live under /locations/tn/ instead of /tx/, so
+  // each carries providerConfig.state = 'tn'. They use a distinct brand
+  // ("GG - KTX") so the home board groups them separately from the Austin
+  // Gold's, and Eastern time. Remove when the trip ends.
+  {
+    id: 'golds-ktx-west-knoxville',
+    name: "GG - KTX — West Knoxville (Walker Springs)",
+    brand: 'GG - KTX',
+    short: 'Walker Springs',
+    neighborhood: 'West Knoxville, TN',
+    room: 'GGX Studio',
+    sourceHost: 'goldsgym.com',
+    provider: 'golds',
+    status: 'live',
+    tz: 'America/New_York',
+    providerConfig: { slug: 'west-knoxville', state: 'tn' },
+    danceRooms: ['GGX Studio'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_GOLDS_KTX,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.goldsgym.com/locations/tn/west-knoxville/',
+  },
+  {
+    id: 'golds-ktx-farragut',
+    name: "GG - KTX — Farragut",
+    brand: 'GG - KTX',
+    short: 'Farragut',
+    neighborhood: 'Farragut, TN',
+    room: 'GGX Studio',
+    sourceHost: 'goldsgym.com',
+    provider: 'golds',
+    status: 'live',
+    tz: 'America/New_York',
+    providerConfig: { slug: 'farragut', state: 'tn' },
+    danceRooms: ['GGX Studio'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_GOLDS_KTX,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.goldsgym.com/locations/tn/farragut/',
+  },
+  {
+    id: 'golds-ktx-chapman',
+    name: "GG - KTX — Chapman",
+    brand: 'GG - KTX',
+    short: 'Chapman',
+    neighborhood: 'South Knoxville, TN',
+    room: 'GGX Studio',
+    sourceHost: 'goldsgym.com',
+    provider: 'golds',
+    status: 'live',
+    tz: 'America/New_York',
+    providerConfig: { slug: 'chapman', state: 'tn' },
+    danceRooms: ['GGX Studio'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_GOLDS_KTX,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.goldsgym.com/locations/tn/chapman/',
   },
 ];
 
