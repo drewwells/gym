@@ -168,8 +168,13 @@ async function fetchWeek(gym, startUTC, endUTC) {
   const { slug } = gym.providerConfig;
   if (!slug) throw new Error(`gym ${gym.id} has no slug configured`);
   const classMinutes = gym.providerConfig.classMinutes || DEFAULT_CLASS_MINUTES;
+  // goldsgym.com namespaces location pages by state, e.g.
+  // /locations/tx/<slug>/ or /locations/tn/<slug>/. Default 'tx' keeps the
+  // existing Austin clubs working with no config change; TN (Knoxville) clubs
+  // set state: 'tn'.
+  const state = gym.providerConfig.state || 'tx';
 
-  const url = `${ORIGIN}/locations/tx/${slug}/`;
+  const url = `${ORIGIN}/locations/${state}/${slug}/`;
   const res = await axios.get(url, { headers: headers(), timeout: 15000 });
   if (typeof res.data !== 'string') {
     throw new Error(`Gold's ${gym.id}: unexpected non-HTML response`);
