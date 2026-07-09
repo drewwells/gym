@@ -376,8 +376,15 @@ function renderBoard() {
   const heroRows = myBrands.size > 0
     ? decorated.filter((r) => myBrands.has(r.row.brand))
     : decorated;
+  // Hero fallback tz for branches with no single referenced gym (e.g. "done
+  // for the day"): use the scoped rows' shared tz when they all agree,
+  // otherwise the anchor. The best-bet / next-up branches override this with
+  // the specific gym's tz.
+  const heroTz = heroRows.length && heroRows.every((r) => r.row.tz === heroRows[0].row.tz)
+    ? heroRows[0].row.tz
+    : tz;
   els.boardHero.innerHTML = '';
-  els.boardHero.appendChild(buildBoardHero(heroRows, isToday, nowMs, tz, date, scopeBrandName()));
+  els.boardHero.appendChild(buildBoardHero(heroRows, isToday, nowMs, heroTz, date, scopeBrandName()));
 
   // Brand-grouped accordion.
   els.boardList.innerHTML = '';
@@ -467,10 +474,13 @@ function buildBoardHero(decorated, isToday, nowMs, tz, date, scopeBrand) {
 
   if (isToday) {
     const openNow = live.filter(({ st }) => st.kind === 'open');
-    const nowLabel = fmt12Long(nowMinutesInTz(tz));
     if (openNow.length) {
-      // Best bet = the open floor with the most time left right now.
+      // Best bet = the open floor with the most time left right now. Format its
+      // "until" time — and the "right now" clock — in that gym's own tz so a
+      // cross-tz best bet (e.g. an Eastern Knoxville floor) reads correctly.
       const best = openNow.reduce((a, b) => (a.st.remainingMs >= b.st.remainingMs ? a : b));
+      const htz = best.row.tz || tz;
+      const nowLabel = fmt12Long(nowMinutesInTz(htz));
       const remainingMin = Math.round(best.st.remainingMs / 60000);
       return hero(
         `Right now · ${nowLabel}`,
@@ -481,7 +491,7 @@ function buildBoardHero(decorated, isToday, nowMs, tz, date, scopeBrand) {
           ' — free for ',
           strong(durStr(remainingMin)),
           ', until ',
-          strong(fmt12LongIso(best.st.endDT, tz)),
+          strong(fmt12LongIso(best.st.endDT, htz)),
           '.',
         ),
       );
@@ -497,20 +507,22 @@ function buildBoardHero(decorated, isToday, nowMs, tz, date, scopeBrand) {
       .filter(Boolean)
       .sort((a, b) => a.when - b.when)[0];
     if (soon) {
+      // "Opens at" and the clock both in the next-up gym's own tz.
+      const htz = soon.row.tz || tz;
       return hero(
-        `Right now · ${nowLabel}`,
+        `Right now · ${fmt12Long(nowMinutesInTz(htz))}`,
         heroHead(accent('0'), ' floors open'),
         sub(
           'Next up: ',
           strong(bestBetLabel(soon.row, scopeBrand)),
           ' opens at ',
-          strong(fmt12LongIso(soon.startDT, tz)),
+          strong(fmt12LongIso(soon.startDT, htz)),
           '.',
         ),
       );
     }
     return hero(
-      `Right now · ${nowLabel}`,
+      `Right now · ${fmt12Long(nowMinutesInTz(tz))}`,
       heroHead(accent('0'), ' floors open'),
       sub('Done for the day — check tomorrow.'),
     );
@@ -598,6 +610,11 @@ function buildBrandGroupHeader(brand, groupRows, isToday) {
 }
 
 function buildGymRow(row, st, tz) {
+  // Each row's absolute times (open/close, "opens", "first window") must be
+  // formatted in THAT gym's timezone — not the board's anchor tz — or an
+  // Eastern gym (e.g. the Knoxville Gold's) renders an hour early on the
+  // summary while its detail page (which already uses g.tz) reads correctly.
+  const rowTz = row.tz || tz;
   const isOpen = st.kind === 'open';
   const isSoon = st.kind === 'soon';
   const dim = st.kind === 'done' || st.kind === 'error' || st.kind === 'soon'
@@ -617,7 +634,7 @@ function buildGymRow(row, st, tz) {
     text: brandMark(row.brand),
   }));
 
-  const status = rowStatusLine(st, tz);
+  const status = rowStatusLine(st, rowTz);
   const statusEl = h('span', { class: `gym-row__status${status.live ? ' is-live' : ''}` });
   if (status.live) statusEl.appendChild(h('span', { class: 'gym-row__live-dot', attrs: { 'aria-hidden': 'true' } }));
   statusEl.appendChild(document.createTextNode(status.text));
@@ -627,7 +644,7 @@ function buildGymRow(row, st, tz) {
     statusEl,
   ));
 
-  const m = rowMetric(st, tz);
+  const m = rowMetric(st, rowTz);
   node.appendChild(h('span', { class: 'gym-row__metric' },
     h('span', { class: `gym-row__metric-num${m.muted ? ' is-muted' : ''}`, text: m.num }),
     h('span', { class: 'gym-row__metric-label', text: m.label }),
