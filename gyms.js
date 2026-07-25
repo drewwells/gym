@@ -160,6 +160,30 @@ const GYMS = [
     sourceUrl: 'https://www.crunch.com/locations/south-austin',
   },
   {
+    // Drew refers to this club as "Palmer". Crunch has no club by that name
+    // anywhere in its 616-club directory — the official name is "Austin
+    // Northwest" (Spicewood Springs Rd). Do NOT go looking for a Parmer Lane
+    // club on his behalf; W Parmer Ln (club 758) is a different, real club
+    // that is deliberately not registered here.
+    // See .knowledge/entries/multi-gym-data-sources.md.
+    id: 'crunch-austin-northwest',
+    name: 'Crunch — Austin Northwest',
+    brand: 'Crunch',
+    short: 'Northwest',
+    neighborhood: 'Northwest Austin',
+    room: 'Group Fitness',
+    sourceHost: 'crunch.com',
+    provider: 'crunch',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { slug: 'atxnorthwest', clubId: 769 },
+    danceRooms: ['Group Fitness'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_24_7,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.crunch.com/locations/atxnorthwest',
+  },
+  {
     id: 'crunch-north-atx',
     name: 'Crunch — North ATX',
     brand: 'Crunch',
