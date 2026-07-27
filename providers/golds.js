@@ -38,6 +38,7 @@ const DEFAULT_CLASS_MINUTES = 60;
 const STUDIO = 'GGX Studio';
 const CYCLE = 'Cycle Studio';
 const GOLDS_FIT = "Gold's Fit";
+const BURN = "Gold's Burn";
 
 function headers() {
   return {
@@ -58,6 +59,8 @@ const POOL_PATTERNS = [/\baqua\b/i, /\bpool\b/i, /\bswim\b/i, /\bh2o\b/i];
 // location-agnostic room label:
 //   - "Group Cycle ..." / IsCycle / StudioCycleID  -> Cycle Studio (cycle room)
 //   - "GOLD'S FIT ..."                              -> Gold's Fit (HYROX/turf)
+//   - "GOLD'S BURN ..."                             -> Gold's Burn (small-group
+//     studio, its own room like Gold's Fit — NOT the GGX floor)
 //   - pool classes (by name)                        -> Other
 //   - everything else (incl. "Group Exercise ...")  -> GGX Studio (the danceable
 //     wood floor; unknown StudioNames default here so an unrecognized class
@@ -68,6 +71,11 @@ function classifyRoom(ev) {
     return CYCLE;
   }
   if (/gold['’]?s\s*fit/i.test(studio)) return GOLDS_FIT;
+  // GOLD'S BURN is a separate branded small-group studio, location-stamped the
+  // same way as GOLD'S FIT ("GOLD'S BURN N. Round Rock"). Found 2026-07-27 when
+  // onboarding N. Round Rock / Pflugerville; without this it fell through to
+  // the default and wrongly blocked the GGX floor.
+  if (/gold['’]?s\s*burn/i.test(studio)) return BURN;
   if (POOL_PATTERNS.some((re) => re.test(ev.EventName || ''))) return 'Other';
   return STUDIO;
 }
