@@ -51,6 +51,15 @@ test('classifyRoom keys off StudioName across locations (not a hardcoded one)', 
   assert.equal(classifyRoom({ EventName: 'GOLD’S FIT', StudioName: "GOLD’S FIT Highland" }), "Gold's Fit");
 });
 
+test("classifyRoom: GOLD'S BURN is its own studio, not the GGX floor", () => {
+  // Seen at N. Round Rock and Pflugerville (2026-07-27). Before this was
+  // handled it fell through to the default and wrongly blocked the GGX floor.
+  assert.equal(classifyRoom({ EventName: 'BURN 30', StudioName: "GOLD'S BURN N. Round Rock" }), "Gold's Burn");
+  assert.equal(classifyRoom({ EventName: 'BURN', StudioName: "GOLD’S BURN Pflugerville" }), "Gold's Burn");
+  // Pflugerville also stamps its cycle room "Studio Cycle" (no location suffix).
+  assert.equal(classifyRoom({ EventName: 'RPM', StudioName: 'Studio Cycle' }), 'Cycle Studio');
+});
+
 test('shortDateToISO normalizes M/D/YYYY to YYYY-MM-DD', () => {
   assert.equal(shortDateToISO('6/2/2026'), '2026-06-02');
   assert.equal(shortDateToISO('12/25/2026'), '2026-12-25');

@@ -339,6 +339,131 @@ const GYMS = [
     sourceUrl: 'https://www.goldsgym.com/locations/tx/austinsouthcentral/',
   },
 
+  // --- North-Austin corridor Gold's (added 2026-07-27) ------------------
+  // Onboarded while surveying north-Austin daytime dance classes. All three
+  // publish M-F 05:00-23:00 / Sat-Sun 07:00-21:00 in their page JSON-LD,
+  // i.e. exactly HOURS_GOLDS, so they reuse the shared template.
+  // NOTE: Gold's Austin-Burnet (7301 Burnet Rd) is deliberately NOT here —
+  // its page embeds zero event_data because the club has no group-exercise
+  // studio at all (amenities list weights/cardio/turf only). Nothing to
+  // schedule, so registering it would just add a permanently empty floor.
+  {
+    id: 'golds-north-round-rock',
+    name: "Gold's Gym — North Round Rock",
+    brand: "Gold's Gym",
+    short: 'North Round Rock',
+    neighborhood: 'Round Rock, TX',
+    room: 'GGX Studio',
+    sourceHost: 'goldsgym.com',
+    provider: 'golds',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { slug: 'austin-north-round-rock' },
+    danceRooms: ['GGX Studio'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_GOLDS,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.goldsgym.com/locations/tx/austin-north-round-rock/',
+  },
+  {
+    id: 'golds-pflugerville',
+    name: "Gold's Gym — Pflugerville",
+    brand: "Gold's Gym",
+    short: 'Pflugerville',
+    neighborhood: 'Pflugerville, TX',
+    room: 'GGX Studio',
+    sourceHost: 'goldsgym.com',
+    provider: 'golds',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { slug: 'pflugerville' },
+    danceRooms: ['GGX Studio'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_GOLDS,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.goldsgym.com/locations/tx/pflugerville/',
+  },
+  {
+    // Slug is 'cypress-creek' (Cypress Creek Rd) but the club is in CEDAR
+    // PARK, not Houston's Cypress Creek — 1314 Cypress Creek Rd, Cedar Park.
+    // Don't "fix" this slug to something Cedar-Park-shaped; it's correct.
+    id: 'golds-cedar-park',
+    name: "Gold's Gym — Cedar Park",
+    brand: "Gold's Gym",
+    short: 'Cedar Park',
+    neighborhood: 'Cedar Park, TX',
+    room: 'GGX Studio',
+    sourceHost: 'goldsgym.com',
+    provider: 'golds',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { slug: 'cypress-creek' },
+    danceRooms: ['GGX Studio'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_GOLDS,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.goldsgym.com/locations/tx/cypress-creek/',
+  },
+
+  // --- North-Austin corridor Crunch (added 2026-07-27) ------------------
+  // All three "Open 24/7" per /crunch_core/clubs/<slug>, so HOURS_24_7.
+  {
+    // The W PARMER Lane club (opened 2026-07-21). Distinct from Austin
+    // Northwest, which is the one Drew calls "Palmer" — see that entry above.
+    id: 'crunch-west-parmer',
+    name: 'Crunch — West Parmer Lane',
+    brand: 'Crunch',
+    short: 'West Parmer',
+    neighborhood: 'North Austin (Parmer/Wells Branch)',
+    room: 'Group Fitness',
+    sourceHost: 'crunch.com',
+    provider: 'crunch',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { slug: 'atxwparmerln', clubId: 758 },
+    danceRooms: ['Group Fitness'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_24_7,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.crunch.com/locations/atxwparmerln',
+  },
+  {
+    id: 'crunch-cedar-park',
+    name: 'Crunch — Cedar Park',
+    brand: 'Crunch',
+    short: 'Cedar Park',
+    neighborhood: 'Cedar Park, TX',
+    room: 'Group Fitness',
+    sourceHost: 'crunch.com',
+    provider: 'crunch',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { slug: 'cedar-park', clubId: 569 },
+    danceRooms: ['Group Fitness'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_24_7,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.crunch.com/locations/cedar-park',
+  },
+  {
+    id: 'crunch-north-round-rock',
+    name: 'Crunch — North Round Rock',
+    brand: 'Crunch',
+    short: 'North Round Rock',
+    neighborhood: 'Round Rock, TX',
+    room: 'Group Fitness',
+    sourceHost: 'crunch.com',
+    provider: 'crunch',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { slug: 'north-round-rock', clubId: 597 },
+    danceRooms: ['Group Fitness'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_24_7,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.crunch.com/locations/north-round-rock',
+  },
+
   // --- Knoxville, TN Gold's (TEMPORARY) ---------------------------------
   // Drew is in Knoxville for a couple of weeks and has a Gold's membership.
   // These three share the corporate goldsgym.com embedded-schedule template
