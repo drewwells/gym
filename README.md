@@ -1,7 +1,7 @@
 # Gym Class Calendar
 
 A small read-only viewer for several gyms' public class calendars, served
-at `gym.jayloves.us`. Beyond listing classes, it has an **Open Floor**
+at `gym.swingelo.com`. Beyond listing classes, it has an **Open Floor**
 view that inverts the schedule to show when a dance-suitable studio room
 is *free* — handy for finding practice time.
 
@@ -132,7 +132,14 @@ make status            # systemd status
 ```
 
 The compose file maps host `:8001` → container `:3000`. DNS/TLS for
-`gym.jayloves.us` is handled separately (reverse proxy / tunnel).
+the public hostname is handled separately by an nginx reverse proxy that
+terminates TLS and forwards to this host over the tailnet at
+`http://100.95.90.94:8001` (`amazon.shrimp-emperor.ts.net`).
+
+As of 2026-08-26 that name is moving: `gym.jayloves.us` (A 167.71.250.107,
+the DigitalOcean box `ocean`) -> `gym.swingelo.com` (A 155.138.246.6, the
+Vultr box `proxy-dfw`), with a permanent 301 from the old name. Either way
+the app is unaffected — it never references its own hostname.
 
 ## License
 
