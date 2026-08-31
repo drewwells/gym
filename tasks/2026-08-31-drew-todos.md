@@ -23,6 +23,15 @@ Answering the batched questions:
 > "1. Brand pinning is fine"
 > "2. Cache is like 7 days, so need to update more often that to keep data fresh. Right now, I have to wait for all gym to be scraped each day I load the site"
 
+### Drew's design ruling on #3 (verbatim, 2026-08-31, via COO)
+
+A DESIGN DECISION, not a suggestion. Delivered alongside a restated hold
+("Just update todos. Don't work these."):
+
+> "Close the loop. I don't want a separate job doing a clear cache. The cron refreshing the cache is also responsible for evicting cache (after it refreshes data). So each day it pulls next 7 days of data, and evicts anything in the past. Consistent data is shown to user with fresh data not empty data due to eviction without a successful refresh."
+
+> "On refresh failures, we can emit an error in the brand section that data can't be loaded"
+
 ---
 
 ## 2. COO's reading (coo-primary@amazon's interpretation — NOT Drew's words)
@@ -214,3 +223,56 @@ got it from.
 **Verified while here (read-only):** 18 gyms `America/Chicago`, 3
 `America/New_York` — matches COO's count, so the timezone spread in §5 is a
 real constraint, not a theoretical one.
+
+---
+
+## 7. #3 design — DECIDED by Drew (2026-08-31). Do not re-open.
+
+1. **ONE job, not two.** Refresh and eviction are the same job. There is no
+   separate cache-clearing job. **Do not propose splitting them.**
+2. **Ordering is the point: refresh FIRST, evict only after a SUCCESSFUL
+   refresh.** Never evict into an empty cache.
+3. Each run pulls the **next 7 days** and evicts **anything in the past**.
+4. **Failure is visible, not silent:** on refresh failure, emit an error in the
+   brand section ("data can't be loaded"). Drew is explicitly choosing a
+   visible failure over an empty state. Do not substitute a silent fallback.
+
+### Convergence — the same defect found twice from opposite directions
+
+Worth recording because it is corroboration, not coincidence:
+- **From the source side (gym@amazon):** `pollAllGyms()` calls
+  `getWeek(..., {refresh: true})`, which does `weekCache.delete(cacheKey)`
+  before refetching (`server.js:95-96`) — a refresh that begins by removing the
+  thing it is refreshing. Recommended overwrite-in-place.
+- **From the symptom side (Drew, independently, without seeing that finding):**
+  "evicts... after it refreshes data", naming the exact failure mode — "empty
+  data due to eviction without a successful refresh."
+
+Two derivations from opposite ends landing on the same fix. That makes this the
+highest-confidence item in the file.
+
+### OPEN IMPLEMENTATION DECISION — midnight phase is not settled by the above
+
+Flagged by COO. **This is not a question for Drew** — he has closed the loop on
+the design, and this is an implementation choice that belongs to whoever builds
+it.
+
+Drew's ruling settles *eviction safety* cleanly. It does **not** settle the
+**phase** problem verified in §5: the key is anchored on **gym-local today**, so
+at local midnight the anchor changes and today's entry is cold no matter how
+well the previous run succeeded. **"Pull the next 7 days" only warms the anchor
+the run was called with** — warming a 7-day *window* under one anchor does not
+populate tomorrow's *key*.
+
+Two candidate resolutions, neither chosen:
+- The run also **pre-warms the next day's anchor** before rollover; or
+- The **anchor logic changes** so a single entry serves the whole strip
+  (which would make the rollover a non-event).
+
+**Interacts with the timezone spread: 18 gyms `America/Chicago`, 3
+`America/New_York`** (verified). Local midnight is not one instant, so any
+phase-based fix has to be per-gym-tz or run often enough to cover the spread —
+otherwise it looks correct in Austin and stays broken in Knoxville.
+
+Left as an open decision deliberately. If it is a real gap it will surface when
+the work is authorised; that is the right time to resolve it, not now.
