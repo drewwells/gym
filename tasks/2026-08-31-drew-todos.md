@@ -121,9 +121,11 @@ top" as a defect:
   iterates raw `gymOrder` (registry order from `/api/gyms`) and never consults
   `myBrands` or `brandOrder`. So the picker he opens to *switch gyms* leaves
   his pinned brand wherever the registry happens to put it.
-- Best reading: both statements are true and consistent. Pinning works where
-  he pins; it's the picker that ignores it. **COO to decide whether this still
-  needs a question to Drew — not asking him directly.**
+- Both statements are true and consistent. Pinning works where he pins; it's
+  the picker that ignores it. **COO independently verified this and ruled #4
+  SPECIFIED — the clarifying question is dead and will not be asked.**
+- **Agreed scope:** order `buildSheetList()` by `brandOrder`. Brand-level. No
+  per-gym pinning.
 
 **#3 — MECHANISM RESOLVED. Verified in source by COO and independently
 re-verified here. This is a finding, not a hypothesis.** Both earlier guesses
@@ -169,5 +171,46 @@ across the live gyms before any UI work. Also still unanswered: what the pin
 renders (single open/closed state vs a count/time), and whether the map is a
 new view alongside the board or replaces it.
 
-**Still open from §4:** #1's exact staleness threshold (Drew's example implies
-~1h40m is too long, but names no number).
+**#1's staleness threshold is NOT an open question — ruled closed by COO.**
+Drew gave an upper bound by example (1h40m is too long) and does not have a
+number in mind. Asking him to name one would manufacture a question out of an
+implementation choice. **Pick a sensible default at build time, make it a
+single named constant, and let him say if it feels wrong.** A threshold nobody
+can specify in advance is a default, not a decision. Do not carry this to Drew.
+
+---
+
+## 6. Pending edits — DO NOT MAKE UNTIL WORK IS AUTHORISED
+
+**#0 (first edit once authorised): `server.js:31` carries the wrong cache key.**
+```
+// Cache key: `${gymId}:${weekStartDate}` -> { fetchedAt, payload }   <-- wrong
+```
+The actual key is `${gym.id}:${anchor}` (`:93`), where `anchor` is **gym-local
+today** for any in-strip date. **This comment is the origin of the whole
+"weekly rollover" dead end** — the June knowledge entry inherited the wrong key
+from it, and it misled coo-primary into that guess on 2026-08-31. The knowledge
+copies are corrected; this artifact is not.
+
+**Deliberately NOT fixed now, and the reasoning matters more than the line**
+(COO, and I agree): it is one comment, obviously correct to change, and
+unrelated to Drew's five items — which is exactly the shape of change that
+walks through a hold unchallenged. *"It's only a comment" is how scope creep
+gets its authorisation.* Nothing is lost by waiting; the true key is recorded
+in two knowledge entries meanwhile.
+
+**Sibling artifact found while verifying the above — same wrong mental model,
+different blast radius.** `server.js:59` puts `weekStart: date` into the cached
+payload, so `/api/events` and `/api/availability` emit a field literally named
+`weekStart` whose value is the **rolling 7-day window start (gym-local today)**,
+not a calendar week start. The value is correct; the *name* propagates the same
+misconception into the API surface, which is plausibly where the `:31` comment
+got it from.
+- **Not the same trivial fix.** Renaming it is an API-shape change, not a
+  comment edit. `public/app.js` does not read the field today (grepped), so a
+  rename looks safe — but it should be decided on its own merits, not bundled
+  into a comment correction. Flagged for whoever picks up #3; no action assumed.
+
+**Verified while here (read-only):** 18 gyms `America/Chicago`, 3
+`America/New_York` — matches COO's count, so the timezone spread in §5 is a
+real constraint, not a theoretical one.
