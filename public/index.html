@@ -43,23 +43,28 @@
              class-only view (matching classes under each gym, board order). -->
         <nav id="boardBar" class="board-bar" aria-label="Day and class search">
           <div id="boardStripSlot"></div>
-          <!-- Time band (Drew, 2026-10-20): two handles, 8 AM–8 PM in
-               15-minute steps, at least an hour apart. The list shows floors
-               with an hour free inside the band, redrawn on every handle
-               move or day tap. Default today 7–8 PM; ?from=&to= in the URL. -->
+          <!-- Time band (Drew, 2026-10-20, mockup C): four preset buttons,
+               then earlier / shorter / longer / later in 30-minute nudges
+               around the readout. 8 AM–8 PM, at least an hour; the list
+               redraws on every tap. Default today 7–8 PM; ?from=&to= in the
+               URL. Buttons are wired in app.js (BAND_PRESETS, nudgeBand). -->
           <div id="timePanel" class="time-panel">
-            <div class="time-panel__head">
-              <output id="timeReadout" class="time-panel__readout" for="bandFrom bandTo"></output>
-              <button id="timeNow" class="time-panel__btn" type="button">Next hour</button>
+            <div id="bandPresets" class="band-presets" role="group" aria-label="Time of day"></div>
+            <div class="band-nudge" role="group" aria-label="Adjust the time band">
+              <button id="bandEarlier" class="band-nudge__btn" type="button" aria-label="30 minutes earlier" title="30 min earlier">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6l-6 6 6 6"/><path d="M19 6l-6 6 6 6"/></svg>
+              </button>
+              <button id="bandShorter" class="band-nudge__btn" type="button" aria-label="30 minutes shorter" title="30 min shorter">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+              </button>
+              <output id="timeReadout" class="band-nudge__readout" aria-live="polite"></output>
+              <button id="bandLonger" class="band-nudge__btn" type="button" aria-label="30 minutes longer" title="30 min longer">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              </button>
+              <button id="bandLater" class="band-nudge__btn" type="button" aria-label="30 minutes later" title="30 min later">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6l6 6-6 6"/><path d="M5 6l6 6-6 6"/></svg>
+              </button>
             </div>
-            <div class="band">
-              <div class="band__track" aria-hidden="true"><div id="bandFill" class="band__fill"></div></div>
-              <label for="bandFrom" class="visually-hidden">From</label>
-              <input id="bandFrom" class="band__input" type="range" min="480" max="1200" step="15" value="1140">
-              <label for="bandTo" class="visually-hidden">To</label>
-              <input id="bandTo" class="band__input" type="range" min="480" max="1200" step="15" value="1200">
-            </div>
-            <div class="time-panel__ticks" aria-hidden="true"><span>8a</span><span>10a</span><span>12p</span><span>2p</span><span>4p</span><span>6p</span><span>8p</span></div>
           </div>
           <div id="classFilterBar" class="class-filter">
             <div class="class-filter__box">

@@ -573,95 +573,65 @@ body {
 .board-bar.is-searching { padding-top: 8px; }
 .class-filter__close[hidden] { display: none; }
 
-/* Time band: two range inputs stacked on one track. The inputs ignore
-   pointer events except on their thumbs, so either handle can be grabbed;
-   the fill between them is drawn from JS (left/width in %). */
-.time-panel { padding: 2px 22px 0; }
+/* Time band (mockup C): a row of four presets, then a row of icon nudges
+   (earlier · shorter · readout · longer · later). */
+.time-panel { padding: 2px 16px 0; display: flex; flex-direction: column; gap: 6px; }
 .board-bar.is-searching .time-panel { display: none; }
 
-.time-panel__head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.band-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
 }
 
-.time-panel__readout {
-  flex: 1 1 auto;
-  font: 800 26px/1 var(--display);
-  color: var(--ink);
-}
-
-.time-panel__btn {
-  min-height: 40px;
-  padding: 0 14px;
+.band-presets__btn {
+  min-height: 44px;
+  padding: 0 2px;
   border: 1px solid var(--handle);
-  border-radius: 999px;
-  background: transparent;
+  border-radius: 10px;
+  background: #fbf7ef;
   font: 600 13px var(--body);
-  color: var(--ink-soft);
+  color: var(--ink);
   cursor: pointer;
 }
 
-.band {
-  position: relative;
+.band-presets__btn.is-active { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+.band-nudge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.band-nudge__btn {
+  flex: 0 0 auto;
+  width: 44px;
   height: 44px;
+  border: 1px solid var(--handle);
+  border-radius: 10px;
+  background: #fbf7ef;
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
 }
 
-.band__track {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  top: 20px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--divider);
+.band-nudge__btn:disabled { color: var(--idle-glyph); cursor: default; }
+
+.band-nudge__readout {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  font: 800 22px/1 var(--display);
+  color: var(--ink);
 }
 
-.band__fill {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-radius: 2px;
-  background: var(--ink);
+@media (max-width: 360px) {
+  .band-nudge__readout { font-size: 18px; }
 }
-
-.band__input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 44px;
-  margin: 0;
-  background: transparent;
-  pointer-events: none;
-  -webkit-appearance: none;
-  appearance: none;
+@media (max-width: 340px) {
+  .band-nudge__readout { font-size: 16px; }
 }
-
-.band__input::-webkit-slider-runnable-track { background: transparent; height: 44px; }
-.band__input::-moz-range-track { background: transparent; }
-.band__input::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  pointer-events: auto;
-  width: 24px;
-  height: 24px;
-  margin-top: 10px;
-  border-radius: 50%;
-  background: var(--ink);
-  box-shadow: 0 0 0 3px var(--paper-2);
-  cursor: grab;
-}
-.band__input::-moz-range-thumb {
-  pointer-events: auto;
-  width: 24px;
-  height: 24px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--ink);
-  box-shadow: 0 0 0 3px var(--paper-2);
-  cursor: grab;
-}
-.band__input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 3px; }
-.band__input:focus-visible::-moz-range-thumb { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 .busy-toggle {
   display: block;
@@ -676,13 +646,6 @@ body {
   cursor: pointer;
 }
 
-.time-panel__ticks {
-  display: flex;
-  justify-content: space-between;
-  padding: 0 6px;
-  font: 400 10px var(--mono);
-  color: var(--muted);
-}
 
 
 .visually-hidden {
