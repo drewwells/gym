@@ -55,10 +55,14 @@
         <div id="swipe" class="swipe">
           <div id="track" class="track"></div>
         </div>
-        <div class="source">
-          <span>Schedule source</span>
-          <a id="sourceLink" class="source-link" href="#" target="_blank" rel="noopener">&mdash;</a>
-        </div>
+        <!-- Layout C (Drew, 2026-10-20): the gym name stays on top as the
+             title; the day strip and All / Find / Maps / Share sit in this
+             bottom bar, in thumb reach. The day strip element is moved in here
+             while the detail view is showing. -->
+        <nav id="detailBar" class="detail-bar" aria-label="Gym page controls">
+          <div id="detailStripSlot"></div>
+          <div id="detailActions" class="detail-actions"></div>
+        </nav>
       </div>
     </div>
 

@@ -956,38 +956,72 @@ body {
 }
 
 /* ---- source footer ---- */
-/* ---- detail top row: Maps + share icons (replace the product label) ----
-   44px targets with 24px icons; negative margins keep the row from growing. */
-.place-actions {
-  display: flex;
-  align-items: center;
-  margin: -8px -12px -8px 0;
+/* ---- gym page bottom bar (layout C): day strip + All / Find / Maps / Share ----
+   Tab-bar style: icon over a short label, 48px+ targets, clears the iOS
+   home indicator via safe-area inset. */
+.detail-bar {
   flex: 0 0 auto;
+  background: var(--paper-2);
+  border-top: 1px solid var(--divider);
+  padding: 4px 0 max(8px, env(safe-area-inset-bottom));
 }
 
-.place-btn {
-  width: 44px;
-  height: 44px;
+.detail-bar .day-strip { padding: 6px 16px 4px; }
+
+.detail-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0 8px;
+}
+
+.detail-tab {
+  min-height: 52px;
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: var(--accent);
-  display: grid;
-  place-items: center;
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font: inherit;
+  text-decoration: none;
   cursor: pointer;
   position: relative;
 }
 
-.place-btn svg { width: 24px; height: 24px; }
+.detail-tab svg { width: 22px; height: 22px; }
+.detail-tab--accent { color: var(--accent); }
 
-.place-btn.is-flashed::after {
+.detail-tab__label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.detail-tab.is-flashed .detail-tab__label { visibility: hidden; }
+.detail-tab.is-flashed::after {
   content: attr(data-label);
   position: absolute;
-  top: 42px;
-  right: 0;
-  font: 500 11px var(--mono);
-  color: var(--accent);
-  white-space: nowrap;
+  bottom: 8px;
+  font: 500 10.5px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.panel-source {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px 22px 20px;
+  border-top: 1px solid var(--divider);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .filter-gym__head {

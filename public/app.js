@@ -52,7 +52,8 @@ const els = {
   detailView: document.getElementById('detailView'),
   swipe: document.getElementById('swipe'),
   track: document.getElementById('track'),
-  sourceLink: document.getElementById('sourceLink'),
+  detailStripSlot: document.getElementById('detailStripSlot'),
+  detailActions: document.getElementById('detailActions'),
   // Picker sheet (used in detail view).
   sheet: document.getElementById('sheet'),
   sheetScrim: document.getElementById('sheetScrim'),
@@ -274,6 +275,10 @@ function closeSearch() {
 
 function renderShell() {
   renderTopRow();
+  // One day strip, two homes: under the top row on the board, inside the
+  // bottom bar on a gym page.
+  if (view === 'detail') els.detailStripSlot.appendChild(els.dayStrip);
+  else els.topRow.after(els.dayStrip);
   buildDayStrip();
   if (view === 'board') {
     els.boardView.hidden = false;
@@ -286,9 +291,7 @@ function renderShell() {
   } else {
     els.boardView.hidden = true;
     els.detailView.hidden = false;
-    const g = gym(currentGymId);
-    els.sourceLink.href = g?.sourceUrl || '#';
-    els.sourceLink.textContent = `${g?.sourceHost || 'source'} ↗`;
+    renderDetailBar(gym(currentGymId));
     renderDetailSlides();
     // Same idea for detail: pull the whole strip up front so swiping /
     // chip-clicks are instant. Server-side caching means one upstream call.
@@ -336,15 +339,9 @@ function renderTopRow() {
     return;
   }
 
-  // Detail: a back button on the far left, the gym identity (tap to open the
-  // picker), and the product label on the right.
+  // Detail: just the gym identity, the page title (tap to open the picker).
+  // Back / Maps / Share live in the bottom bar (renderDetailBar).
   const g = gym(currentGymId);
-  const back = h('button', {
-    class: 'back-btn',
-    attrs: { type: 'button', 'aria-label': 'Back to all floors' },
-  }, '← All');
-  back.addEventListener('click', () => navigate({ gymId: null, date: dayOffset === 0 ? null : addDays(today, dayOffset) }));
-
   const ident = h('button', {
     class: 'gym-btn',
     attrs: { type: 'button', 'aria-label': 'Change gym', 'aria-haspopup': 'dialog' },
@@ -360,8 +357,7 @@ function renderTopRow() {
   );
   ident.addEventListener('click', openPicker);
 
-  els.topRow.appendChild(h('div', { class: 'top-row__left' }, back, ident));
-  els.topRow.appendChild(placeActions(g));
+  els.topRow.appendChild(h('div', { class: 'top-row__left' }, ident));
 }
 
 // ---- date strip ----
@@ -1029,6 +1025,19 @@ function attachSwipe() {
 function commitSwipe(offset) { setDayOffset(offset); }
 
 function buildDetailPanel(rec, offset, g) {
+  const panel = buildDetailPanelBody(rec, offset, g);
+  // Schedule source sits at the end of the scroll, not in a fixed footer,
+  // so the bottom bar is the only chrome under the content.
+  if (g && g.sourceUrl) {
+    panel.appendChild(h('div', { class: 'panel-source' },
+      h('span', { text: 'Schedule source' }),
+      h('a', { class: 'source-link', attrs: { href: g.sourceUrl, target: '_blank', rel: 'noopener' }, text: `${g.sourceHost || 'source'} ↗` }),
+    ));
+  }
+  return panel;
+}
+
+function buildDetailPanelBody(rec, offset, g) {
   const panel = h('div', { class: 'panel' });
   if (g.status === 'coming-soon') {
     panel.appendChild(comingSoonHero(g));
@@ -1441,20 +1450,35 @@ function shareButton(g, cls, mode = 'text', label = `Share ${placeName(g)} addre
   return btn;
 }
 
-// Detail top row, right side: Maps + share icons for this gym, in place of
-// the product label (no extra row: vertical space matters on a phone). The
-// address itself isn't shown; it rides in the Maps / share links.
-function placeActions(g) {
-  if (!g || !g.address) return h('span', { class: 'product', text: 'Open Floor' });
-  const maps = h('a', {
-    class: 'place-btn',
-    attrs: {
-      href: mapsUrl(g), target: '_blank', rel: 'noopener',
-      'aria-label': `Open ${placeName(g)} in Maps`, title: 'Maps',
-    },
-  });
-  maps.innerHTML = MAP_PIN_SVG;
-  return h('span', { class: 'place-actions' }, maps, gymShareButton(g, 'place-btn'));
+const BACK_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>';
+const SEARCH_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
+
+// Gym page bottom bar, tab-bar style (icon over a short label):
+// All (back to the board) · Find (class search) · Maps · Share.
+// The address isn't shown; it rides in the Maps / share links.
+function renderDetailBar(g) {
+  const date = () => (dayOffset === 0 ? null : addDays(today, dayOffset));
+  const tab = (node, svg, label) => {
+    node.innerHTML = svg;
+    node.appendChild(h('span', { class: 'detail-tab__label', text: label }));
+    return node;
+  };
+  const all = tab(h('button', { class: 'detail-tab', attrs: { type: 'button', 'aria-label': 'All gyms' } }), BACK_SVG, 'All');
+  all.addEventListener('click', () => navigate({ gymId: null, date: date() }));
+  const find = tab(h('button', { class: 'detail-tab', attrs: { type: 'button', 'aria-label': 'Find a class' } }), SEARCH_SVG, 'Find');
+  find.addEventListener('click', () => { navigate({ gymId: null, date: date() }); openSearch(); });
+  els.detailActions.innerHTML = '';
+  els.detailActions.append(all, find);
+  if (g && g.address) {
+    const maps = h('a', {
+      class: 'detail-tab detail-tab--accent',
+      attrs: { href: mapsUrl(g), target: '_blank', rel: 'noopener', 'aria-label': `Open ${placeName(g)} in Maps` },
+    });
+    els.detailActions.appendChild(tab(maps, MAP_PIN_SVG, 'Maps'));
+    const share = gymShareButton(g, 'detail-tab detail-tab--accent');
+    share.appendChild(h('span', { class: 'detail-tab__label', text: 'Share' }));
+    els.detailActions.appendChild(share);
+  }
 }
 
 // Icon-only share. Sends the Google Maps place link (name + address reach
