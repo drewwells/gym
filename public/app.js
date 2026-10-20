@@ -50,10 +50,11 @@ const els = {
   boardStripSlot: document.getElementById('boardStripSlot'),
   timePanel: document.getElementById('timePanel'),
   timeReadout: document.getElementById('timeReadout'),
-  bandFrom: document.getElementById('bandFrom'),
-  bandTo: document.getElementById('bandTo'),
-  bandFill: document.getElementById('bandFill'),
-  timeNow: document.getElementById('timeNow'),
+  bandPresets: document.getElementById('bandPresets'),
+  bandEarlier: document.getElementById('bandEarlier'),
+  bandShorter: document.getElementById('bandShorter'),
+  bandLonger: document.getElementById('bandLonger'),
+  bandLater: document.getElementById('bandLater'),
   // Detail view.
   detailView: document.getElementById('detailView'),
   swipe: document.getElementById('swipe'),
@@ -108,6 +109,13 @@ let searchOpen = false;       // search mode: strip hidden, Close shown (always 
 // Board time band: minutes since local midnight (each gym's own tz), always
 // at least an hour apart. Mirrored in the URL as ?from=HH:MM&to=HH:MM.
 const BAND_MIN = 8 * 60, BAND_MAX = 20 * 60, BAND_DEFAULT = [19 * 60, 20 * 60];
+const BAND_STEP = 30;
+const BAND_PRESETS = [
+  ['Morning', 8 * 60, 11 * 60],
+  ['Midday', 11 * 60, 14 * 60],
+  ['Afternoon', 14 * 60, 17 * 60],
+  ['Evening', 17 * 60, 20 * 60],
+];
 let band = [...BAND_DEFAULT];
 // Gyms with no free hour in the band (and classes-only studios) stay hidden
 // behind a "Show N more" toggle (Drew, 2026-10-20). Session-only.
@@ -176,12 +184,22 @@ async function init() {
   els.classFilter.addEventListener('blur', () => {
     if (searchOpen && !classQuery) { searchOpen = false; syncClassFilterInput(); }
   });
-  // 'input' fires on every step while a handle drags: the list follows live.
-  els.bandFrom.addEventListener('input', () => setBand(Number(els.bandFrom.value), band[1], 'from'));
-  els.bandTo.addEventListener('input', () => setBand(band[0], Number(els.bandTo.value), 'to'));
-  els.timeNow.addEventListener('click', () => {
-    const t = Math.floor(nowMinutesInTz(anchorTz) / 15) * 15;
-    setBand(t, t + FreeAt.SLOT_MIN, 'from');
+  for (const [name, from, to] of BAND_PRESETS) {
+    const btn = h('button', {
+      class: 'band-presets__btn',
+      attrs: { type: 'button', 'aria-pressed': 'false', title: fmtSpan(from, to), 'data-from': String(from), 'data-to': String(to) },
+      text: name,
+    });
+    btn.addEventListener('click', () => setBand(from, to));
+    els.bandPresets.appendChild(btn);
+  }
+  els.bandEarlier.addEventListener('click', () => shiftBand(-BAND_STEP));
+  els.bandLater.addEventListener('click', () => shiftBand(BAND_STEP));
+  els.bandShorter.addEventListener('click', () => setBand(band[0], band[1] - BAND_STEP));
+  els.bandLonger.addEventListener('click', () => {
+    // Grow the end; once it hits 8 PM, grow the start instead.
+    if (band[1] < BAND_MAX) setBand(band[0], band[1] + BAND_STEP);
+    else setBand(band[0] - BAND_STEP, band[1], 'to');
   });
   attachSwipe();
 
@@ -302,8 +320,8 @@ function syncClassFilterInput() {
 
 // ---- pick a time ----
 
-// Keep both handles in 8 AM–8 PM and at least an hour apart; the handle
-// being dragged (`moved`) wins and pushes the other one along.
+// Keep the band in 8 AM–8 PM and at least an hour long; the end that moved
+// (`moved`) wins and pushes the other one along.
 function clampBand(from, to, moved = 'from') {
   const gap = FreeAt.SLOT_MIN;
   from = Math.max(BAND_MIN, Math.min(BAND_MAX - gap, from));
@@ -322,6 +340,13 @@ function setBand(from, to, moved) {
   if (view === 'board') renderBoard();
 }
 
+// Earlier / later: slide the whole band, keeping its length.
+function shiftBand(delta) {
+  const len = band[1] - band[0];
+  const from = Math.max(BAND_MIN, Math.min(BAND_MAX - len, band[0] + delta));
+  setBand(from, from + len);
+}
+
 function replaceBoardUrl() {
   if (view !== 'board') return;
   history.replaceState({}, '', buildUrl({ gymId: null, date: dayOffset === 0 ? null : addDays(today, dayOffset) }));
@@ -329,14 +354,16 @@ function replaceBoardUrl() {
 
 function syncTimePicker() {
   const [from, to] = band;
-  if (Number(els.bandFrom.value) !== from) els.bandFrom.value = String(from);
-  if (Number(els.bandTo.value) !== to) els.bandTo.value = String(to);
-  const pct = (m) => ((m - BAND_MIN) / (BAND_MAX - BAND_MIN)) * 100;
-  els.bandFill.style.left = `${pct(from)}%`;
-  els.bandFill.style.width = `${pct(to) - pct(from)}%`;
-  els.bandFrom.setAttribute('aria-valuetext', fmt12Long(from));
-  els.bandTo.setAttribute('aria-valuetext', fmt12Long(to));
   els.timeReadout.textContent = fmtSpan(from, to);
+  for (const btn of els.bandPresets.children) {
+    const on = Number(btn.dataset.from) === from && Number(btn.dataset.to) === to;
+    btn.classList.toggle('is-active', on);
+    btn.setAttribute('aria-pressed', String(on));
+  }
+  els.bandEarlier.disabled = from <= BAND_MIN;
+  els.bandLater.disabled = to >= BAND_MAX;
+  els.bandShorter.disabled = to - from <= FreeAt.SLOT_MIN;
+  els.bandLonger.disabled = to - from >= BAND_MAX - BAND_MIN;
 }
 
 function openSearch() {
