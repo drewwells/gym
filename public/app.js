@@ -43,11 +43,11 @@ const els = {
   // Board view (brand directory).
   boardView: document.getElementById('boardView'),
   boardHero: document.getElementById('boardHero'),
-  classFilterBar: document.getElementById('classFilterBar'),
   classFilter: document.getElementById('classFilter'),
   classFilterClose: document.getElementById('classFilterClose'),
   boardList: document.getElementById('boardList'),
-  boardFooter: document.getElementById('boardFooter'),
+  boardBar: document.getElementById('boardBar'),
+  boardStripSlot: document.getElementById('boardStripSlot'),
   // Detail view.
   detailView: document.getElementById('detailView'),
   swipe: document.getElementById('swipe'),
@@ -98,7 +98,7 @@ let dayOffset = 0;            // 0 = today, up to STRIP_DAYS-1
 // Board class-name filter, mirrored in the URL as ?q= (board view only).
 // Kept while drilled into a gym so "back" returns to the same results.
 let classQuery = '';
-let searchOpen = false;       // search bar expanded (always true while q is set)
+let searchOpen = false;       // search mode: strip hidden, Close shown (always true while q is set)
 
 const dayCache = new Map();   // `${gymId}:${date}` -> parsed day | { error }
 const dayInflight = new Map();
@@ -158,6 +158,11 @@ async function init() {
   els.classFilter.addEventListener('input', () => setClassQuery(els.classFilter.value));
   els.classFilterClose.addEventListener('click', closeSearch);
   els.classFilter.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSearch(); });
+  els.classFilter.addEventListener('focus', () => { if (!searchOpen) { searchOpen = true; syncClassFilterInput(); } });
+  // Leaving an empty field drops back to the day strip.
+  els.classFilter.addEventListener('blur', () => {
+    if (searchOpen && !classQuery) { searchOpen = false; syncClassFilterInput(); }
+  });
   attachSwipe();
 
   // 3. Read the URL once, then render.
@@ -255,30 +260,28 @@ function setClassQuery(value) {
 function syncClassFilterInput() {
   if (classQuery) searchOpen = true;
   if (els.classFilter.value !== classQuery) els.classFilter.value = classQuery;
-  els.classFilterBar.hidden = !searchOpen;
+  els.boardBar.classList.toggle('is-searching', searchOpen);
+  els.classFilterClose.hidden = !searchOpen;
 }
 
 function openSearch() {
   searchOpen = true;
   syncClassFilterInput();
-  renderTopRow();
   els.classFilter.focus();
 }
 
 function closeSearch() {
   searchOpen = false;
   setClassQuery('');
-  renderTopRow();
+  els.classFilter.blur();
 }
 
 // ---- shell rendering ----
 
 function renderShell() {
   renderTopRow();
-  // One day strip, two homes: under the top row on the board, inside the
-  // bottom bar on a gym page.
-  if (view === 'detail') els.detailStripSlot.appendChild(els.dayStrip);
-  else els.topRow.after(els.dayStrip);
+  // One day strip, two homes: each view's bottom bar.
+  (view === 'detail' ? els.detailStripSlot : els.boardStripSlot).appendChild(els.dayStrip);
   buildDayStrip();
   if (view === 'board') {
     els.boardView.hidden = false;
@@ -326,15 +329,6 @@ function renderTopRow() {
         attrs: { 'aria-label': `${brandOrder.length} brands, ${liveCount} live of ${totalCount} total floors` },
       }),
     );
-    if (!searchOpen) {
-      const btn = h('button', {
-        class: 'search-btn',
-        attrs: { type: 'button', 'aria-label': 'Find a class', 'aria-controls': 'classFilterBar', 'aria-expanded': 'false' },
-      });
-      btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
-      btn.addEventListener('click', openSearch);
-      right.appendChild(btn);
-    }
     els.topRow.appendChild(right);
     return;
   }
@@ -404,14 +398,12 @@ function renderBoard() {
     els.boardHero.innerHTML = '';
     els.boardHero.appendChild(boardMessageHero('Reading every floor', 'One sec'));
     els.boardList.innerHTML = '';
-    renderBoardFooter();
     return;
   }
   if (rec.error) {
     els.boardHero.innerHTML = '';
     els.boardHero.appendChild(boardMessageHero(rec.error, "Couldn't load the board"));
     els.boardList.innerHTML = '';
-    renderBoardFooter();
     return;
   }
 
@@ -442,7 +434,6 @@ function renderBoard() {
     : tz;
   if (classQuery.trim()) {
     renderClassFilter(decorated, isToday, nowMs, date);
-    renderBoardFooter();
     return;
   }
 
@@ -453,7 +444,7 @@ function renderBoard() {
     els.boardHero.appendChild(hero(
       isToday ? `Right now · ${fmt12Long(nowMinutesInTz(heroTz))}` : `${dateParts(date).dowLong} · ${dateParts(date).month} ${dateParts(date).dom}`,
       heroHead('No open ', accent('floors')),
-      sub('Your pinned studios are classes only — tap the search icon to find a class.'),
+      sub('Your pinned studios are classes only — search below to find a class.'),
     ));
   } else {
     els.boardHero.appendChild(buildBoardHero(heroRows, isToday, nowMs, heroTz, date, scopeBrandName()));
@@ -474,8 +465,6 @@ function renderBoard() {
       }
     }
   }
-
-  renderBoardFooter();
 }
 
 // Per-gym typed status. `other` is the non-today branch; the today branch
@@ -802,26 +791,6 @@ function rowMetric(st, tz) {
   if (st.kind === 'soon') return { num: '—', label: 'soon', muted: true };
   if (st.kind === 'error') return { num: '—', label: 'unknown', muted: true };
   return { num: '—', label: 'done', muted: true };
-}
-
-function renderBoardFooter() {
-  els.boardFooter.innerHTML = '';
-  const list = pinnedBrandList();
-  if (list.length === 0) {
-    els.boardFooter.appendChild(h('span', { class: 'board-footer__pinned', text: 'No brand pinned' }));
-    els.boardFooter.appendChild(h('span', { class: 'board-footer__hint', text: 'Tap ☆ to pin one' }));
-    return;
-  }
-  // Compact "★ Gold's Gym, Crunch · saved on this device" — relies on the
-  // footer's ellipsis fallback when the brand list outruns the row.
-  els.boardFooter.appendChild(h('span', {
-    class: 'board-footer__pinned',
-    text: `★ ${list.join(', ')} · saved on this device`,
-  }));
-  els.boardFooter.appendChild(h('span', {
-    class: 'board-footer__hint',
-    text: list.length === 1 ? 'Tap ★ to unpin' : 'Tap ★ to unpin one',
-  }));
 }
 
 function boardMessageHero(headText, eyebrowText) {

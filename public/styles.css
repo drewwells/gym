@@ -349,7 +349,7 @@ body {
 }
 
 .brand-list::after {
-  /* Tiny breathing room below the last row before the footer's hairline. */
+  /* Tiny breathing room below the last row before the bottom bar's hairline. */
   content: "";
   display: block;
   height: 8px;
@@ -547,18 +547,31 @@ body {
 }
 
 /* ---- brand-directory home: class-name filter ----
-   Sits between the day strip and the hero. With a query, the hero slot
+   Lives in the home bottom bar, under the day strip. With a query, the hero slot
    holds a one-line result count and the list holds matching classes
    grouped by brand → gym, in the board's own order. */
 .class-filter {
   flex: 0 0 auto;
-  padding: 10px 12px 8px 16px;
+  padding: 2px 16px 0;
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.class-filter[hidden] { display: none; }
+/* Home bottom bar (mockup 1 + 3): day strip over the class search field,
+   same paper-2 bar and safe-area clearance as the gym page's. Searching
+   hides the strip so the field sits right above the keyboard. */
+.board-bar {
+  flex: 0 0 auto;
+  background: var(--paper-2);
+  border-top: 1px solid var(--divider);
+  padding: 4px 0 max(10px, env(safe-area-inset-bottom));
+}
+
+.board-bar .day-strip { padding: 6px 16px 6px; }
+.board-bar.is-searching .day-strip { display: none; }
+.board-bar.is-searching { padding-top: 8px; }
+.class-filter__close[hidden] { display: none; }
 
 .visually-hidden {
   position: absolute;
@@ -574,11 +587,11 @@ body {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 44px;
-  padding: 0 0 0 12px;
+  gap: 10px;
+  height: 48px;
+  padding: 0 0 0 14px;
   border: 1.5px solid var(--handle);
-  border-radius: 10px;
+  border-radius: 12px;
   background: #fbf7ef;
   color: var(--muted);
 }
@@ -604,8 +617,9 @@ body {
 
 .class-filter__close {
   flex: 0 0 auto;
-  min-width: 44px;
-  height: 44px;
+  min-width: 60px;
+  height: 48px;
+  margin-right: -8px;
   padding: 0 8px;
   border: 0;
   background: transparent;
@@ -618,19 +632,6 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
-}
-
-.search-btn {
-  margin: -15px -12px -15px 0; /* keep the 44px target without growing the row */
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--ink);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
 }
 
 .filter-summary {
@@ -732,6 +733,18 @@ body {
 
 .filter-class__chev { color: var(--muted); }
 
+/* Narrow phones: the name gets the full row; Register + spots drop to a
+   second line under it (one cell, pinned left and right). Otherwise long
+   names squeezed to a letter per line at 320px. */
+@media (max-width: 360px) {
+  .filter-class { grid-template-columns: 58px minmax(0, 1fr) 12px; padding-bottom: 6px; }
+  .filter-class__time { grid-area: 1 / 1; }
+  .filter-class__name { grid-area: 1 / 2; padding-bottom: 2px; }
+  .filter-class__register { grid-area: 2 / 2; justify-self: start; }
+  .filter-class__spots { grid-area: 2 / 2; justify-self: end; }
+  .filter-class__chev { grid-area: 1 / 3; }
+}
+
 .filter-miss {
   border-top: 1px solid var(--divider);
   padding: 12px 22px 16px;
@@ -739,24 +752,6 @@ body {
   font-size: 11px;
   color: var(--muted);
 }
-
-/* ---- brand-directory home: footer ---- */
-.board-footer {
-  flex: 0 0 auto;
-  padding: 12px 22px 18px;
-  border-top: 1px solid var(--divider);
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.board-footer__pinned { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.board-footer__hint { white-space: nowrap; }
 
 /* ---- swipe deck ---- */
 .swipe {
