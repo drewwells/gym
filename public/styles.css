@@ -573,32 +573,11 @@ body {
 .board-bar.is-searching { padding-top: 8px; }
 .class-filter__close[hidden] { display: none; }
 
-/* Pick a time: a clock button beside the search field opens a slider
-   panel under the day strip (the search row steps aside while it's open). */
-.time-btn {
-  flex: 0 0 auto;
-  height: 48px;
-  margin-left: 4px;
-  padding: 0 12px;
-  box-sizing: border-box;
-  border: 1.5px solid var(--handle);
-  border-radius: 12px;
-  background: #fbf7ef;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font: 600 14px var(--body);
-  color: var(--ink);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.time-btn[hidden] { display: none; }
-.time-btn.is-active { background: var(--ink); border-color: var(--ink); color: var(--paper); }
-.board-bar.is-picking .class-filter { display: none; }
-
-.time-panel { padding: 4px 22px 2px; }
-.time-panel[hidden] { display: none; }
+/* Time band: two range inputs stacked on one track. The inputs ignore
+   pointer events except on their thumbs, so either handle can be grabbed;
+   the fill between them is drawn from JS (left/width in %). */
+.time-panel { padding: 2px 22px 0; }
+.board-bar.is-searching .time-panel { display: none; }
 
 .time-panel__head {
   display: flex;
@@ -608,12 +587,12 @@ body {
 
 .time-panel__readout {
   flex: 1 1 auto;
-  font: 800 30px/1 var(--display);
+  font: 800 26px/1 var(--display);
   color: var(--ink);
 }
 
 .time-panel__btn {
-  min-height: 44px;
+  min-height: 40px;
   padding: 0 14px;
   border: 1px solid var(--handle);
   border-radius: 999px;
@@ -623,24 +602,75 @@ body {
   cursor: pointer;
 }
 
-.time-panel__btn--primary { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.band {
+  position: relative;
+  height: 44px;
+}
 
-.time-panel__slider {
+.band__track {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 20px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--divider);
+}
+
+.band__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  background: var(--ink);
+}
+
+.band__input {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 44px;
-  margin: 4px 0 0;
-  accent-color: var(--ink);
-  cursor: pointer;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
 }
+
+.band__input::-webkit-slider-runnable-track { background: transparent; height: 44px; }
+.band__input::-moz-range-track { background: transparent; }
+.band__input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 24px;
+  height: 24px;
+  margin-top: 10px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 0 0 3px var(--paper-2);
+  cursor: grab;
+}
+.band__input::-moz-range-thumb {
+  pointer-events: auto;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 0 0 3px var(--paper-2);
+  cursor: grab;
+}
+.band__input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 3px; }
+.band__input:focus-visible::-moz-range-thumb { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 .time-panel__ticks {
   display: flex;
   justify-content: space-between;
+  padding: 0 6px;
   font: 400 10px var(--mono);
   color: var(--muted);
 }
 
-.view-board .section-title { padding: 0 22px; }
 
 .visually-hidden {
   position: absolute;

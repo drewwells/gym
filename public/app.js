@@ -50,11 +50,10 @@ const els = {
   boardStripSlot: document.getElementById('boardStripSlot'),
   timePanel: document.getElementById('timePanel'),
   timeReadout: document.getElementById('timeReadout'),
-  timeSlider: document.getElementById('timeSlider'),
+  bandFrom: document.getElementById('bandFrom'),
+  bandTo: document.getElementById('bandTo'),
+  bandFill: document.getElementById('bandFill'),
   timeNow: document.getElementById('timeNow'),
-  timeDone: document.getElementById('timeDone'),
-  timeBtn: document.getElementById('timeBtn'),
-  timeBtnLabel: document.getElementById('timeBtnLabel'),
   // Detail view.
   detailView: document.getElementById('detailView'),
   swipe: document.getElementById('swipe'),
@@ -106,11 +105,10 @@ let dayOffset = 0;            // 0 = today, up to STRIP_DAYS-1
 // Kept while drilled into a gym so "back" returns to the same results.
 let classQuery = '';
 let searchOpen = false;       // search mode: strip hidden, Close shown (always true while q is set)
-// Board "pick a time": minutes since local midnight (each gym's own tz), or
-// null for the live right-now board. Mirrored in the URL as ?at=HH:MM.
-const PICK_DEFAULT_MIN = 19 * 60;
-let pickAt = null;
-let pickerOpen = false;       // slider panel showing in the bottom bar
+// Board time band: minutes since local midnight (each gym's own tz), always
+// at least an hour apart. Mirrored in the URL as ?from=HH:MM&to=HH:MM.
+const BAND_MIN = 8 * 60, BAND_MAX = 20 * 60, BAND_DEFAULT = [19 * 60, 20 * 60];
+let band = [...BAND_DEFAULT];
 
 const dayCache = new Map();   // `${gymId}:${date}` -> parsed day | { error }
 const dayInflight = new Map();
@@ -175,11 +173,13 @@ async function init() {
   els.classFilter.addEventListener('blur', () => {
     if (searchOpen && !classQuery) { searchOpen = false; syncClassFilterInput(); }
   });
-  els.timeBtn.addEventListener('click', () => setPicker(!pickerOpen));
-  els.timeDone.addEventListener('click', () => setPicker(false));
-  els.timeNow.addEventListener('click', () => { pickAt = null; setPicker(false); });
-  // 'input' fires on every slider step while dragging: the list follows live.
-  els.timeSlider.addEventListener('input', () => setPickAt(Number(els.timeSlider.value)));
+  // 'input' fires on every step while a handle drags: the list follows live.
+  els.bandFrom.addEventListener('input', () => setBand(Number(els.bandFrom.value), band[1], 'from'));
+  els.bandTo.addEventListener('input', () => setBand(band[0], Number(els.bandTo.value), 'to'));
+  els.timeNow.addEventListener('click', () => {
+    const t = Math.floor(nowMinutesInTz(anchorTz) / 15) * 15;
+    setBand(t, t + FreeAt.SLOT_MIN, 'from');
+  });
   attachSwipe();
 
   // 3. Read the URL once, then render.
@@ -204,20 +204,30 @@ function parseLocation() {
   if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) date = null;
   if (gymId && !gyms.has(gymId)) gymId = null;
   const q = url.searchParams.get('q') || '';
-  const atM = /^(\d{1,2}):(\d{2})$/.exec(url.searchParams.get('at') || '');
-  const at = atM && Number(atM[1]) < 24 && Number(atM[2]) < 60 ? Number(atM[1]) * 60 + Number(atM[2]) : null;
-  return { gymId, date, q, at };
+  const from = hhmmToMin(url.searchParams.get('from'));
+  const to = hhmmToMin(url.searchParams.get('to'));
+  return { gymId, date, q, band: from !== null && to !== null ? clampBand(from, to) : null };
 }
 
-function buildUrl({ gymId, date, q = classQuery, at = pickAt }) {
+function hhmmToMin(v) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(v || '');
+  return m && Number(m[1]) < 24 && Number(m[2]) < 60 ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+function minToHhmm(min) {
+  return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+}
+
+function buildUrl({ gymId, date, q = classQuery }) {
   const qs = new URLSearchParams();
   if (gymId) qs.set('gym', gymId);
   if (date) qs.set('date', date);
   if (!gymId && q.trim()) qs.set('q', q.trim());
-  // ?at=19:00 kept readable (URLSearchParams would write 19%3A00).
-  const atStr = !gymId && at !== null
-    ? `at=${String(Math.floor(at / 60)).padStart(2, '0')}:${String(at % 60).padStart(2, '0')}` : '';
-  const search = [qs.toString(), atStr].filter(Boolean).join('&');
+  // ?from=10:00&to=16:00 kept readable (URLSearchParams would write %3A);
+  // left off at the default band.
+  const bandStr = !gymId && (band[0] !== BAND_DEFAULT[0] || band[1] !== BAND_DEFAULT[1])
+    ? `from=${minToHhmm(band[0])}&to=${minToHhmm(band[1])}` : '';
+  const search = [qs.toString(), bandStr].filter(Boolean).join('&');
   return search ? `/?${search}` : '/';
 }
 
@@ -225,9 +235,9 @@ function buildUrl({ gymId, date, q = classQuery, at = pickAt }) {
 // replace the entry (popstate / initial load) or push a new one (a fresh
 // in-app nav).
 function route({ push }) {
-  const { gymId, date, q, at } = parseLocation();
+  const { gymId, date, q, band: b } = parseLocation();
   const newView = gymId ? 'detail' : 'board';
-  if (!gymId) { classQuery = q; pickAt = at; }
+  if (!gymId) { classQuery = q; band = b || [...BAND_DEFAULT]; }
   syncClassFilterInput();
   syncTimePicker();
   const tz = gymId ? (gyms.get(gymId)?.tz || anchorTz) : anchorTz;
@@ -285,21 +295,25 @@ function syncClassFilterInput() {
   if (els.classFilter.value !== classQuery) els.classFilter.value = classQuery;
   els.boardBar.classList.toggle('is-searching', searchOpen);
   els.classFilterClose.hidden = !searchOpen;
-  els.timeBtn.hidden = searchOpen;
 }
 
 // ---- pick a time ----
 
-function setPicker(open) {
-  pickerOpen = open;
-  if (open && pickAt === null) pickAt = PICK_DEFAULT_MIN;
-  syncTimePicker();
-  replaceBoardUrl();
-  if (view === 'board') renderBoard();
+// Keep both handles in 8 AM–8 PM and at least an hour apart; the handle
+// being dragged (`moved`) wins and pushes the other one along.
+function clampBand(from, to, moved = 'from') {
+  const gap = FreeAt.SLOT_MIN;
+  from = Math.max(BAND_MIN, Math.min(BAND_MAX - gap, from));
+  to = Math.max(BAND_MIN + gap, Math.min(BAND_MAX, to));
+  if (to - from < gap) {
+    if (moved === 'from') to = from + gap;
+    else from = to - gap;
+  }
+  return [from, to];
 }
 
-function setPickAt(min) {
-  pickAt = min;
+function setBand(from, to, moved) {
+  band = clampBand(from, to, moved);
   syncTimePicker();
   replaceBoardUrl();
   if (view === 'board') renderBoard();
@@ -311,19 +325,15 @@ function replaceBoardUrl() {
 }
 
 function syncTimePicker() {
-  els.timePanel.hidden = !pickerOpen;
-  els.boardBar.classList.toggle('is-picking', pickerOpen);
-  els.timeBtn.setAttribute('aria-expanded', String(pickerOpen));
-  els.timeBtn.classList.toggle('is-active', pickAt !== null);
-  const shown = pickAt === null ? PICK_DEFAULT_MIN : pickAt;
-  els.timeBtnLabel.textContent = fmt12(shown).replace(/(AM|PM)$/, ' $1');
-  els.timeBtn.setAttribute('aria-label', pickAt === null
-    ? 'Pick a day and time to see free floors'
-    : `Free floors at ${fmt12Long(pickAt)}; change time`);
-  if (pickAt !== null) {
-    if (Number(els.timeSlider.value) !== pickAt) els.timeSlider.value = String(pickAt);
-    els.timeReadout.textContent = fmt12Long(pickAt);
-  }
+  const [from, to] = band;
+  if (Number(els.bandFrom.value) !== from) els.bandFrom.value = String(from);
+  if (Number(els.bandTo.value) !== to) els.bandTo.value = String(to);
+  const pct = (m) => ((m - BAND_MIN) / (BAND_MAX - BAND_MIN)) * 100;
+  els.bandFill.style.left = `${pct(from)}%`;
+  els.bandFill.style.width = `${pct(to) - pct(from)}%`;
+  els.bandFrom.setAttribute('aria-valuetext', fmt12Long(from));
+  els.bandTo.setAttribute('aria-valuetext', fmt12Long(to));
+  els.timeReadout.textContent = fmtSpan(from, to);
 }
 
 function openSearch() {
@@ -469,68 +479,16 @@ function renderBoard() {
     return;
   }
 
-  const tz = anchorTz;
   const nowMs = Date.now();
   // The /api/board response already returns rows in deterministic
-  // [brand, short, id] order (lib/board.js sortBoardRows). Decorate each row
-  // with its typed status so the hero and within-group sort share one
-  // computation — and so we don't have to re-walk `day.gaps` from the
-  // template path.
+  // [brand, short, id] order (lib/board.js sortBoardRows). Classes-only
+  // studios and the search results still use the typed status.
   const decorated = rec.rows.map((row) => ({ row, st: gymStatus(row, nowMs, isToday) }));
-
-  // Hero. Scope to the pinned brands when 1+ are set so the headline
-  // answers "what's open in MY brands right now?" instead of broadcasting
-  // across the city. Falls back to the all-brands hero when myBrands is
-  // empty (the user explicitly un-pinned everything).
-  // Classes-only studios (no dance floor) never count toward the hero.
-  const floorRows = decorated.filter((r) => !r.row.classesOnly);
-  const heroRows = myBrands.size > 0
-    ? floorRows.filter((r) => myBrands.has(r.row.brand))
-    : floorRows;
-  // Hero fallback tz for branches with no single referenced gym (e.g. "done
-  // for the day"): use the scoped rows' shared tz when they all agree,
-  // otherwise the anchor. The best-bet / next-up branches override this with
-  // the specific gym's tz.
-  const heroTz = heroRows.length && heroRows.every((r) => r.row.tz === heroRows[0].row.tz)
-    ? heroRows[0].row.tz
-    : tz;
   if (classQuery.trim()) {
     renderClassFilter(decorated, isToday, nowMs, date);
     return;
   }
-  if (pickAt !== null) {
-    renderFreeAt(rec.rows, date);
-    return;
-  }
-
-  els.boardHero.innerHTML = '';
-  if (myBrands.size > 0 && !heroRows.length && decorated.some((r) => myBrands.has(r.row.brand))) {
-    // Only classes-only brands pinned: there is no floor to count, so say
-    // that instead of a misleading "0 floors open".
-    els.boardHero.appendChild(hero(
-      isToday ? `Right now · ${fmt12Long(nowMinutesInTz(heroTz))}` : `${dateParts(date).dowLong} · ${dateParts(date).month} ${dateParts(date).dom}`,
-      heroHead('No open ', accent('floors')),
-      sub('Your pinned studios are classes only — search below to find a class.'),
-    ));
-  } else {
-    els.boardHero.appendChild(buildBoardHero(heroRows, isToday, nowMs, heroTz, date, scopeBrandName()));
-  }
-
-  // Brand-grouped accordion.
-  els.boardList.innerHTML = '';
-  for (const brand of brandOrder) {
-    const groupRows = decorated.filter((r) => r.row.brand === brand);
-    if (!groupRows.length) continue;
-    // Within a group: open-now (most time left first) → opens-later
-    // (soonest first) → done / no-time last. Matches README spec.
-    groupRows.sort((a, b) => statusRank(a.st) - statusRank(b.st) || statusTiebreak(a.st, b.st));
-    els.boardList.appendChild(buildBrandGroupHeader(brand, groupRows, isToday));
-    if (!brandCollapsed.has(brand)) {
-      for (const { row, st } of groupRows) {
-        els.boardList.appendChild(buildGymRow(row, st, tz));
-      }
-    }
-  }
+  renderFreeInBand(decorated, date);
 }
 
 // Per-gym typed status. `other` is the non-today branch; the today branch
@@ -605,104 +563,10 @@ function statusTiebreak(a, b) {
   return 0;
 }
 
-// Hero: answer-first "X floors open right now" / "No floor open for ⟨dur⟩" /
-// "Every floor's done for tonight." (today branch), or
-// "⟨n⟩ of ⟨m⟩ floors have open time." (other-day branch).
-function buildBoardHero(decorated, isToday, nowMs, tz, date, scopeBrand) {
-  const live = decorated.filter(({ row }) => row.status === 'live' && row.day);
-  // Headline is a single line at every viewport: count + "floors open" (or
-  // singular "floor"). Brand is intentionally dropped from the noun — long
-  // brand names like "LA Fitness" and "Gold's Gym" overflow the column at
-  // 74px display. The pinned brand context is carried by the eyebrow ("RIGHT
-  // NOW") and the sub line ("Best bet: <gym short>"), which is enough to
-  // make scope obvious without bloating the headline.
-
-  if (isToday) {
-    const openNow = live.filter(({ st }) => st.kind === 'open');
-    if (openNow.length) {
-      // Best bet = the open floor with the most time left right now. Format its
-      // "until" time — and the "right now" clock — in that gym's own tz so a
-      // cross-tz best bet (e.g. an Eastern Knoxville floor) reads correctly.
-      const best = openNow.reduce((a, b) => (a.st.remainingMs >= b.st.remainingMs ? a : b));
-      const htz = best.row.tz || tz;
-      const nowLabel = fmt12Long(nowMinutesInTz(htz));
-      const remainingMin = Math.round(best.st.remainingMs / 60000);
-      return hero(
-        `Right now · ${nowLabel}`,
-        heroHead(accent(String(openNow.length)), ' ', openNow.length === 1 ? 'floor' : 'floors', ' open'),
-        sub(
-          'Best bet: ',
-          strong(bestBetLabel(best.row, scopeBrand)),
-          ' — free for ',
-          strong(durStr(remainingMin)),
-          ', until ',
-          strong(fmt12LongIso(best.st.endDT, htz)),
-          '.',
-        ),
-      );
-    }
-    // Nobody open now. Headline is the same "0 floors open"; sub-text
-    // disambiguates "opens later" vs "done for the day".
-    const soon = live
-      .map(({ row, st }) => {
-        if (st.kind === 'upcoming') return { row, when: new Date(st.nextGap.startDT).getTime(), startDT: st.nextGap.startDT };
-        if (st.kind === 'inClass' && st.nextGap) return { row, when: new Date(st.nextGap.startDT).getTime(), startDT: st.nextGap.startDT };
-        return null;
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.when - b.when)[0];
-    if (soon) {
-      // "Opens at" and the clock both in the next-up gym's own tz.
-      const htz = soon.row.tz || tz;
-      return hero(
-        `Right now · ${fmt12Long(nowMinutesInTz(htz))}`,
-        heroHead(accent('0'), ' floors open'),
-        sub(
-          'Next up: ',
-          strong(bestBetLabel(soon.row, scopeBrand)),
-          ' opens at ',
-          strong(fmt12LongIso(soon.startDT, htz)),
-          '.',
-        ),
-      );
-    }
-    return hero(
-      `Right now · ${fmt12Long(nowMinutesInTz(tz))}`,
-      heroHead(accent('0'), ' floors open'),
-      sub('Done for the day — check tomorrow.'),
-    );
-  }
-
-  // Other-day branch. "{N} of {M} open" fits the same single-line slot and
-  // gives a coverage rollup; sub-text gives the total available time.
-  const withOpen = live.filter(({ st }) => st.kind === 'other' && st.windowCount > 0);
-  const totalMin = live.reduce((s, { st }) => s + (st.kind === 'other' ? st.totalOpenMin : 0), 0);
-  const p = dateParts(date);
-  return hero(
-    `${p.dowLong} · ${p.month} ${p.dom}`,
-    heroHead(accent(String(withOpen.length)), ' of ', String(live.length), ' open'),
-    sub(strong(durStr(totalMin)), ' of practice time — tap a floor for its windows.'),
-  );
-}
-
-// Best-bet / next-up label: drop the leading brand once the hero is already
-// brand-scoped (saying "Gold's Gym Highland" inside a Gold's-scoped hero
-// would be redundant); otherwise keep the brand prefix.
-function bestBetLabel(row, scopeBrand) {
-  const short = (row.short || row.name || '').trim();
-  if (scopeBrand && row.brand === scopeBrand) return short;
-  return `${row.brand || ''} ${short}`.trim();
-}
-
-
-function buildBrandGroupHeader(brand, groupRows, isToday) {
+// `metaText` is the group's right-hand count ("2 of 7 free").
+function buildBrandGroupHeader(brand, groupRows, metaText) {
   const isMine = myBrands.has(brand);
   const isCollapsed = brandCollapsed.has(brand);
-  const liveRows = groupRows.filter(({ row }) => row.status === 'live' && row.day && !row.classesOnly);
-  const openish = liveRows.filter(({ st }) => st.kind === 'open' || (st.kind === 'other' && st.windowCount > 0)).length;
-  let metaText = isToday
-    ? `${openish} of ${liveRows.length} open`
-    : `${openish} of ${liveRows.length} with time`;
   if (groupRows.every(({ row }) => row.classesOnly)) {
     metaText = `${groupRows.length} ${groupRows.length === 1 ? 'studio' : 'studios'} · classes only`;
   }
@@ -859,57 +723,75 @@ function rowMetric(st, tz) {
   return { num: '—', label: 'done', muted: true };
 }
 
-// Pick-a-time view: floors free for the whole slot at pickAt on `date`
-// (pinned brands first, board order), then the rest soonest-free first with
-// what is in the way. Each gym is read on its own local clock.
-function renderFreeAt(rows, date) {
-  const dur = FreeAt.SLOT_MIN;
-  const live = rows.filter((r) => r.status === 'live' && r.day && !r.day.error);
-  const inMin = live.map((r) => {
+// Home board (Drew, 2026-10-20): floors with at least an hour free inside
+// the time band on `date`, in the usual brand groups (pins, collapse). In
+// each group the free floors come first with their windows, then the rest,
+// dimmed, with what's in the way. Each gym is read on its own local clock.
+// The hero counts the pinned brands when any are pinned, like before.
+function renderFreeInBand(decorated, date) {
+  const [from, to] = band;
+  const toMins = (r) => {
     const tz = r.tz || anchorTz;
     return {
       row: r,
-      classesOnly: r.classesOnly,
       gaps: (r.day.gaps || []).map((g) => ({ start: isoToMinutes(g.startDT, tz), end: isoToMinutes(g.endDT, tz) })),
       events: (r.day.events || []).map((e) => ({ name: e.name, start: isoToMinutes(e.startDT, tz), end: isoToMinutes(e.endDT, tz) })),
     };
-  });
-  const { free, busy } = FreeAt.freeFloorsAt(inMin, pickAt, dur);
-  const rank = (x) => brandOrder.indexOf(x.row.brand);
-  free.sort((a, b) => rank(a) - rank(b));
+  };
+  const floors = decorated
+    .filter(({ row }) => !row.classesOnly && row.status === 'live' && row.day && !row.error)
+    .map(({ row }) => toMins(row));
+  const { free, busy } = FreeAt.freeFloorsInBand(floors, from, to);
+  const result = new Map([...free, ...busy].map((x) => [x.row.id, x]));
 
+  const scoped = (x) => myBrands.size === 0 || myBrands.has(x.row.brand);
+  const nFree = free.filter(scoped).length;
+  const scopeName = scopeBrandName();
   const p = dateParts(date);
-  const span = `${fmtSpan(pickAt, pickAt + dur)}`;
   els.boardHero.innerHTML = '';
   els.boardHero.appendChild(hero(
-    `${p.dowLong} ${p.month} ${p.dom} · ${span}`,
-    heroHead(accent(String(free.length)), free.length === 1 ? ' floor free' : ' floors free'),
-    sub(free.length
-      ? 'Free for the whole hour. Each gym on its local time.'
-      : 'Nothing is free for the whole hour. The soonest openings are below.'),
+    `${p.dowLong} ${p.month} ${p.dom} · ${fmtSpan(from, to)}`,
+    heroHead(accent(String(nFree)), nFree === 1 ? ' floor free' : ' floors free'),
+    sub(nFree
+      ? `${scopeName ? `${scopeName}: ` : ''}an hour or more free in this window. Local time at each gym.`
+      : 'No floor has a free hour in this window. Try widening it.'),
   ));
 
   els.boardList.innerHTML = '';
-  for (const f of free) {
-    els.boardList.appendChild(freeAtRow(f.row, {
-      open: true,
-      status: `Free ${fmtSpan(f.from, f.until)}${tzTag(f.row)}`,
-      num: fmt12(f.until), label: 'free until',
-    }));
-  }
-  if (busy.length) {
-    els.boardList.appendChild(sectionTitle(`Not free ${span} · soonest first`, true));
-    for (const b of busy) {
-      els.boardList.appendChild(freeAtRow(b.row, {
-        open: false,
-        status: b.blocker
-          ? `${b.blocker.name} ${fmtSpan(b.blocker.start, b.blocker.end)}`
-          : 'Closed then',
-        num: b.freeFrom === null ? '—' : fmt12(b.freeFrom),
-        label: b.freeFrom === null ? 'not this day' : 'free at',
-      }));
+  for (const brand of brandOrder) {
+    const groupRows = decorated.filter((r) => r.row.brand === brand);
+    if (!groupRows.length) continue;
+    const inBand = groupRows.map((r) => result.get(r.row.id)).filter(Boolean);
+    const nBrandFree = inBand.filter((x) => x.free).length;
+    els.boardList.appendChild(buildBrandGroupHeader(brand, groupRows, `${nBrandFree} of ${inBand.length} free`));
+    if (brandCollapsed.has(brand)) continue;
+    const ordered = [...inBand.filter((x) => x.free), ...inBand.filter((x) => !x.free)];
+    for (const x of ordered) els.boardList.appendChild(bandRow(x));
+    // Classes-only studios and not-yet-open gyms keep their usual rows.
+    for (const { row, st } of groupRows) {
+      if (!result.has(row.id)) els.boardList.appendChild(buildGymRow(row, st, anchorTz));
     }
   }
+}
+
+function bandRow(x) {
+  if (x.free) {
+    const total = x.windows.reduce((n, w) => n + (w.end - w.start), 0);
+    return freeAtRow(x.row, {
+      open: true,
+      status: `Free ${x.windows.map((w) => fmtSpan(w.start, w.end)).join(', ')}${tzTag(x.row)}`,
+      num: durStr(total), label: 'free',
+    });
+  }
+  const names = [...new Set(x.blockers.map((b) => b.name))];
+  return freeAtRow(x.row, {
+    open: false,
+    status: names.length
+      ? `${names.slice(0, 2).join(', ')}${names.length > 2 ? ` +${names.length - 2}` : ''}`
+      : 'Closed then',
+    num: x.longest ? durStr(x.longest) : '—',
+    label: x.longest ? 'longest gap' : 'booked',
+  });
 }
 
 function freeAtRow(row, { open, status, num, label }) {
