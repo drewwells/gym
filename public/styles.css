@@ -956,6 +956,76 @@ body {
 }
 
 /* ---- source footer ---- */
+/* ---- detail: address + Maps / Share ---- */
+.place {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 22px;
+  border-top: 1px solid var(--divider);
+}
+
+.place[hidden] { display: none; }
+
+.place__addr {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--ink-soft);
+}
+
+.place__maps,
+.place__share {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 14px var(--body);
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.place__share.is-flashed { font-size: 0; }
+.place__share.is-flashed svg { display: none; }
+.place__share.is-flashed::after { content: attr(data-label); font-size: 14px; }
+
+.filter-gym__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.filter-gym__share {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  margin-right: -12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  position: relative;
+}
+
+.filter-gym__share.is-flashed::after {
+  content: attr(data-label);
+  position: absolute;
+  right: 40px;
+  font: 500 11px var(--mono);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
 .source {
   padding: 10px 22px 18px;
   border-top: 1px solid var(--divider);
