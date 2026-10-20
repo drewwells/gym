@@ -43,13 +43,30 @@
              class-only view (matching classes under each gym, board order). -->
         <nav id="boardBar" class="board-bar" aria-label="Day and class search">
           <div id="boardStripSlot"></div>
+          <!-- Pick a time (Drew, 2026-10-20): the list shows floors free for
+               a full hour from the chosen day + time, redrawn on every slider
+               step or day tap. Default today 7 PM; ?at=HH:MM in the URL. -->
+          <div id="timePanel" class="time-panel" hidden>
+            <div class="time-panel__head">
+              <output id="timeReadout" class="time-panel__readout" for="timeSlider"></output>
+              <button id="timeNow" class="time-panel__btn" type="button">Now</button>
+              <button id="timeDone" class="time-panel__btn time-panel__btn--primary" type="button">Done</button>
+            </div>
+            <label for="timeSlider" class="visually-hidden">Time of day</label>
+            <input id="timeSlider" class="time-panel__slider" type="range" min="360" max="1320" step="15" value="1140">
+            <div class="time-panel__ticks" aria-hidden="true"><span>6a</span><span>9a</span><span>12p</span><span>3p</span><span>6p</span><span>10p</span></div>
+          </div>
           <div id="classFilterBar" class="class-filter">
             <div class="class-filter__box">
               <svg class="class-filter__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
               <label for="classFilter" class="visually-hidden">Find a class by name</label>
-              <input id="classFilter" class="class-filter__input" type="search" placeholder="Find a class, e.g. flow" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+              <input id="classFilter" class="class-filter__input" type="search" placeholder="Find a class" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
             </div>
             <button id="classFilterClose" class="class-filter__close" type="button" hidden>Close</button>
+            <button id="timeBtn" class="time-btn" type="button" aria-controls="timePanel" aria-expanded="false">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+              <span id="timeBtnLabel">7 PM</span>
+            </button>
           </div>
         </nav>
       </div>
@@ -84,6 +101,7 @@
     </div>
   </div>
 
+  <script src="/free-at.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

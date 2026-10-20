@@ -48,6 +48,13 @@ const els = {
   boardList: document.getElementById('boardList'),
   boardBar: document.getElementById('boardBar'),
   boardStripSlot: document.getElementById('boardStripSlot'),
+  timePanel: document.getElementById('timePanel'),
+  timeReadout: document.getElementById('timeReadout'),
+  timeSlider: document.getElementById('timeSlider'),
+  timeNow: document.getElementById('timeNow'),
+  timeDone: document.getElementById('timeDone'),
+  timeBtn: document.getElementById('timeBtn'),
+  timeBtnLabel: document.getElementById('timeBtnLabel'),
   // Detail view.
   detailView: document.getElementById('detailView'),
   swipe: document.getElementById('swipe'),
@@ -99,6 +106,11 @@ let dayOffset = 0;            // 0 = today, up to STRIP_DAYS-1
 // Kept while drilled into a gym so "back" returns to the same results.
 let classQuery = '';
 let searchOpen = false;       // search mode: strip hidden, Close shown (always true while q is set)
+// Board "pick a time": minutes since local midnight (each gym's own tz), or
+// null for the live right-now board. Mirrored in the URL as ?at=HH:MM.
+const PICK_DEFAULT_MIN = 19 * 60;
+let pickAt = null;
+let pickerOpen = false;       // slider panel showing in the bottom bar
 
 const dayCache = new Map();   // `${gymId}:${date}` -> parsed day | { error }
 const dayInflight = new Map();
@@ -163,6 +175,11 @@ async function init() {
   els.classFilter.addEventListener('blur', () => {
     if (searchOpen && !classQuery) { searchOpen = false; syncClassFilterInput(); }
   });
+  els.timeBtn.addEventListener('click', () => setPicker(!pickerOpen));
+  els.timeDone.addEventListener('click', () => setPicker(false));
+  els.timeNow.addEventListener('click', () => { pickAt = null; setPicker(false); });
+  // 'input' fires on every slider step while dragging: the list follows live.
+  els.timeSlider.addEventListener('input', () => setPickAt(Number(els.timeSlider.value)));
   attachSwipe();
 
   // 3. Read the URL once, then render.
@@ -187,15 +204,20 @@ function parseLocation() {
   if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) date = null;
   if (gymId && !gyms.has(gymId)) gymId = null;
   const q = url.searchParams.get('q') || '';
-  return { gymId, date, q };
+  const atM = /^(\d{1,2}):(\d{2})$/.exec(url.searchParams.get('at') || '');
+  const at = atM && Number(atM[1]) < 24 && Number(atM[2]) < 60 ? Number(atM[1]) * 60 + Number(atM[2]) : null;
+  return { gymId, date, q, at };
 }
 
-function buildUrl({ gymId, date, q = classQuery }) {
+function buildUrl({ gymId, date, q = classQuery, at = pickAt }) {
   const qs = new URLSearchParams();
   if (gymId) qs.set('gym', gymId);
   if (date) qs.set('date', date);
   if (!gymId && q.trim()) qs.set('q', q.trim());
-  const search = qs.toString();
+  // ?at=19:00 kept readable (URLSearchParams would write 19%3A00).
+  const atStr = !gymId && at !== null
+    ? `at=${String(Math.floor(at / 60)).padStart(2, '0')}:${String(at % 60).padStart(2, '0')}` : '';
+  const search = [qs.toString(), atStr].filter(Boolean).join('&');
   return search ? `/?${search}` : '/';
 }
 
@@ -203,10 +225,11 @@ function buildUrl({ gymId, date, q = classQuery }) {
 // replace the entry (popstate / initial load) or push a new one (a fresh
 // in-app nav).
 function route({ push }) {
-  const { gymId, date, q } = parseLocation();
+  const { gymId, date, q, at } = parseLocation();
   const newView = gymId ? 'detail' : 'board';
-  if (!gymId) classQuery = q;
+  if (!gymId) { classQuery = q; pickAt = at; }
   syncClassFilterInput();
+  syncTimePicker();
   const tz = gymId ? (gyms.get(gymId)?.tz || anchorTz) : anchorTz;
   today = todayInTz(tz);
   const targetDate = date || today;
@@ -262,6 +285,45 @@ function syncClassFilterInput() {
   if (els.classFilter.value !== classQuery) els.classFilter.value = classQuery;
   els.boardBar.classList.toggle('is-searching', searchOpen);
   els.classFilterClose.hidden = !searchOpen;
+  els.timeBtn.hidden = searchOpen;
+}
+
+// ---- pick a time ----
+
+function setPicker(open) {
+  pickerOpen = open;
+  if (open && pickAt === null) pickAt = PICK_DEFAULT_MIN;
+  syncTimePicker();
+  replaceBoardUrl();
+  if (view === 'board') renderBoard();
+}
+
+function setPickAt(min) {
+  pickAt = min;
+  syncTimePicker();
+  replaceBoardUrl();
+  if (view === 'board') renderBoard();
+}
+
+function replaceBoardUrl() {
+  if (view !== 'board') return;
+  history.replaceState({}, '', buildUrl({ gymId: null, date: dayOffset === 0 ? null : addDays(today, dayOffset) }));
+}
+
+function syncTimePicker() {
+  els.timePanel.hidden = !pickerOpen;
+  els.boardBar.classList.toggle('is-picking', pickerOpen);
+  els.timeBtn.setAttribute('aria-expanded', String(pickerOpen));
+  els.timeBtn.classList.toggle('is-active', pickAt !== null);
+  const shown = pickAt === null ? PICK_DEFAULT_MIN : pickAt;
+  els.timeBtnLabel.textContent = fmt12(shown).replace(/(AM|PM)$/, ' $1');
+  els.timeBtn.setAttribute('aria-label', pickAt === null
+    ? 'Pick a day and time to see free floors'
+    : `Free floors at ${fmt12Long(pickAt)}; change time`);
+  if (pickAt !== null) {
+    if (Number(els.timeSlider.value) !== pickAt) els.timeSlider.value = String(pickAt);
+    els.timeReadout.textContent = fmt12Long(pickAt);
+  }
 }
 
 function openSearch() {
@@ -434,6 +496,10 @@ function renderBoard() {
     : tz;
   if (classQuery.trim()) {
     renderClassFilter(decorated, isToday, nowMs, date);
+    return;
+  }
+  if (pickAt !== null) {
+    renderFreeAt(rec.rows, date);
     return;
   }
 
@@ -791,6 +857,92 @@ function rowMetric(st, tz) {
   if (st.kind === 'soon') return { num: '—', label: 'soon', muted: true };
   if (st.kind === 'error') return { num: '—', label: 'unknown', muted: true };
   return { num: '—', label: 'done', muted: true };
+}
+
+// Pick-a-time view: floors free for the whole slot at pickAt on `date`
+// (pinned brands first, board order), then the rest soonest-free first with
+// what is in the way. Each gym is read on its own local clock.
+function renderFreeAt(rows, date) {
+  const dur = FreeAt.SLOT_MIN;
+  const live = rows.filter((r) => r.status === 'live' && r.day && !r.day.error);
+  const inMin = live.map((r) => {
+    const tz = r.tz || anchorTz;
+    return {
+      row: r,
+      classesOnly: r.classesOnly,
+      gaps: (r.day.gaps || []).map((g) => ({ start: isoToMinutes(g.startDT, tz), end: isoToMinutes(g.endDT, tz) })),
+      events: (r.day.events || []).map((e) => ({ name: e.name, start: isoToMinutes(e.startDT, tz), end: isoToMinutes(e.endDT, tz) })),
+    };
+  });
+  const { free, busy } = FreeAt.freeFloorsAt(inMin, pickAt, dur);
+  const rank = (x) => brandOrder.indexOf(x.row.brand);
+  free.sort((a, b) => rank(a) - rank(b));
+
+  const p = dateParts(date);
+  const span = `${fmtSpan(pickAt, pickAt + dur)}`;
+  els.boardHero.innerHTML = '';
+  els.boardHero.appendChild(hero(
+    `${p.dowLong} ${p.month} ${p.dom} · ${span}`,
+    heroHead(accent(String(free.length)), free.length === 1 ? ' floor free' : ' floors free'),
+    sub(free.length
+      ? 'Free for the whole hour. Each gym on its local time.'
+      : 'Nothing is free for the whole hour. The soonest openings are below.'),
+  ));
+
+  els.boardList.innerHTML = '';
+  for (const f of free) {
+    els.boardList.appendChild(freeAtRow(f.row, {
+      open: true,
+      status: `Free ${fmtSpan(f.from, f.until)}${tzTag(f.row)}`,
+      num: fmt12(f.until), label: 'free until',
+    }));
+  }
+  if (busy.length) {
+    els.boardList.appendChild(sectionTitle(`Not free ${span} · soonest first`, true));
+    for (const b of busy) {
+      els.boardList.appendChild(freeAtRow(b.row, {
+        open: false,
+        status: b.blocker
+          ? `${b.blocker.name} ${fmtSpan(b.blocker.start, b.blocker.end)}`
+          : 'Closed then',
+        num: b.freeFrom === null ? '—' : fmt12(b.freeFrom),
+        label: b.freeFrom === null ? 'not this day' : 'free at',
+      }));
+    }
+  }
+}
+
+function freeAtRow(row, { open, status, num, label }) {
+  const node = h('button', {
+    class: `gym-row${open ? ' is-open' : ' is-dim'}`,
+    attrs: { type: 'button', role: 'listitem', 'aria-label': `${row.brand || ''} ${row.short || row.name || ''}, ${status}`.trim() },
+  },
+    h('span', { class: 'gym-row__swatch', attrs: { 'aria-hidden': 'true' }, text: brandMark(row.brand) }),
+    h('span', { class: 'gym-row__name' },
+      h('span', { class: 'gym-row__short', text: row.short || row.name || '' }),
+      h('span', { class: `gym-row__status${open ? ' is-live' : ''}`, text: status }),
+    ),
+    h('span', { class: 'gym-row__metric' },
+      h('span', { class: `gym-row__metric-num${open ? '' : ' is-muted'}`, text: num }),
+      h('span', { class: 'gym-row__metric-label', text: label }),
+    ),
+  );
+  node.addEventListener('click', () => navigate({ gymId: row.id, date: dayOffset === 0 ? null : addDays(today, dayOffset) }));
+  return node;
+}
+
+// "7:00 – 8:00 PM", or "11:30 AM – 1:00 PM" across noon.
+function fmtSpan(a, b) {
+  const A = fmt12Long(a), B = fmt12Long(b);
+  return A.slice(-2) === B.slice(-2) ? `${A.slice(0, -3)} – ${B}` : `${A} – ${B}`;
+}
+
+// " ET" for a gym whose clock differs from the board's (e.g. Knoxville).
+function tzTag(row) {
+  if (!row.tz || row.tz === anchorTz) return '';
+  const name = new Intl.DateTimeFormat('en-US', { timeZone: row.tz, timeZoneName: 'short' })
+    .formatToParts(new Date()).find((x) => x.type === 'timeZoneName');
+  return name ? ` ${name.value.replace(/^([A-Z])[SD]T$/, '$1T')}` : '';
 }
 
 function boardMessageHero(headText, eyebrowText) {
