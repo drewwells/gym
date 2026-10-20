@@ -206,3 +206,14 @@ test('registry: every gym has a full street address for share / maps', () => {
     assert.equal(publicGym(g).address, g.address, g.id);
   }
 });
+
+test('registry: every gym has a unique Google Maps feature id for the place share', () => {
+  const { GYMS, publicGym } = require('../gyms');
+  const seen = new Set();
+  for (const g of GYMS) {
+    assert.match(g.mapsFtid || '', /^0x[0-9a-f]{14,16}:0x[0-9a-f]{14,16}$/, g.id);
+    assert.ok(!seen.has(g.mapsFtid), `duplicate ftid on ${g.id}`);
+    seen.add(g.mapsFtid);
+    assert.equal(publicGym(g).mapsFtid, g.mapsFtid, g.id);
+  }
+});

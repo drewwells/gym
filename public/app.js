@@ -1388,21 +1388,17 @@ function mapsUrl(g) {
   return `https://maps.apple.com/?${qs}`;
 }
 
-// Google Maps search URL for the place (free Maps URLs scheme, no key).
-// Google Maps' own share is a place link (maps.google.com/?ftid=<feature
-// id>), which shows the name in a Tesla (Drew, 2026-10-20). The ftid/place
-// id needs the paid Places API, so this searches "name, address" instead,
-// which Google resolves to the business.
+// Google Maps place link by feature id: the same URL Google Maps' own share
+// expands to. Shared to a Tesla it arrives with the business name; plain
+// text and /maps/search/ links lost the name or were rejected (2026-10-20).
 function googleMapsUrl(g) {
-  const qs = new URLSearchParams({ api: '1', query: `${placeName(g)}, ${g.address}` });
-  return `https://www.google.com/maps/search/?${qs}`;
+  return `https://maps.google.com/?ftid=${g.mapsFtid}`; // hex:hex, URL-safe as is
 }
 
-// Two share payloads, because the Tesla app's handling can't be tested here:
+// Two share payloads:
 //   'text' "Name, street, city, ST zip" as plain text. Tesla takes the
-//          address from this; the name was dropped while it held an em dash.
-//   'link' only a Google Maps URL for the place, the kind of link Google
-//          Maps itself shares (an Apple Maps link lost the name in the car).
+//          address from this but not the name.
+//   'link' only the Google Maps place link (ftid). Carries the name too.
 async function shareGym(g, btn, mode = 'text') {
   const text = `${placeName(g)}, ${g.address}`;
   const payload = mode === 'link'
@@ -1459,9 +1455,11 @@ function renderPlaceBar(g) {
   const share = shareButton(g, 'place__share');
   share.appendChild(document.createTextNode('Share'));
   els.placeBar.appendChild(share);
-  const shareLink = shareButton(g, 'place__share', 'link', `Share ${placeName(g)} as a Google Maps link`);
-  shareLink.appendChild(document.createTextNode('Share (Google Maps)'));
-  els.placeBar.appendChild(shareLink);
+  if (g.mapsFtid) {
+    const shareLink = shareButton(g, 'place__share', 'link', `Share ${placeName(g)} as a Google Maps link`);
+    shareLink.appendChild(document.createTextNode('Share (Google Maps)'));
+    els.placeBar.appendChild(shareLink);
+  }
 }
 
 function spotsLabel(c) {
