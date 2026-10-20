@@ -622,6 +622,8 @@ body {
   flex: 1 1 auto;
   min-width: 0;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
   font: 800 22px/1 var(--display);
   color: var(--ink);
 }

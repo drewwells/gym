@@ -42,7 +42,37 @@
     return { free, busy };
   }
 
-  const api = { SLOT_MIN, floorInBand, freeFloorsInBand };
+  // The band the board lets you pick: 8 AM to 10 PM (Drew, 2026-10-20:
+  // "go beyond 8pm… extend to 10pm"). Gyms' own closing hours still trim
+  // the free windows; this only bounds the picker.
+  const BAND_MIN = 8 * 60;
+  const BAND_MAX = 22 * 60;
+
+  // Keep [from, to] inside the bounds and at least SLOT_MIN long; the end
+  // that moved (`moved`) wins and pushes the other one along.
+  function clampBand(from, to, moved = 'from') {
+    from = Math.max(BAND_MIN, Math.min(BAND_MAX - SLOT_MIN, from));
+    to = Math.max(BAND_MIN + SLOT_MIN, Math.min(BAND_MAX, to));
+    if (to - from < SLOT_MIN) {
+      if (moved === 'from') to = from + SLOT_MIN;
+      else from = to - SLOT_MIN;
+    }
+    return [from, to];
+  }
+
+  // Earlier / later: slide the whole band, keeping its length.
+  function shiftBand([from, to], delta) {
+    const len = to - from;
+    const start = Math.max(BAND_MIN, Math.min(BAND_MAX - len, from + delta));
+    return [start, start + len];
+  }
+
+  // Longer: grow the end; once it hits BAND_MAX, grow the start instead.
+  function growBand([from, to], step) {
+    return to < BAND_MAX ? clampBand(from, to + step, 'to') : clampBand(from - step, to, 'from');
+  }
+
+  const api = { SLOT_MIN, BAND_MIN, BAND_MAX, floorInBand, freeFloorsInBand, clampBand, shiftBand, growBand };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.FreeAt = api;
 })(this);
