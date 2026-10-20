@@ -10,9 +10,10 @@ const crux = require('./providers/crux');
 const crunch = require('./providers/crunch');
 const lafitness = require('./providers/lafitness');
 const golds = require('./providers/golds');
+const lifetime = require('./providers/lifetime');
 const blackswan = require('./providers/blackswan');
 
-const PROVIDERS = { crux, crunch, lafitness, golds, blackswan };
+const PROVIDERS = { crux, crunch, lafitness, golds, lifetime, blackswan };
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
