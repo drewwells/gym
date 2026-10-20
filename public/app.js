@@ -53,7 +53,6 @@ const els = {
   swipe: document.getElementById('swipe'),
   track: document.getElementById('track'),
   sourceLink: document.getElementById('sourceLink'),
-  placeBar: document.getElementById('placeBar'),
   // Picker sheet (used in detail view).
   sheet: document.getElementById('sheet'),
   sheetScrim: document.getElementById('sheetScrim'),
@@ -290,7 +289,6 @@ function renderShell() {
     const g = gym(currentGymId);
     els.sourceLink.href = g?.sourceUrl || '#';
     els.sourceLink.textContent = `${g?.sourceHost || 'source'} ↗`;
-    renderPlaceBar(g);
     renderDetailSlides();
     // Same idea for detail: pull the whole strip up front so swiping /
     // chip-clicks are instant. Server-side caching means one upstream call.
@@ -363,7 +361,7 @@ function renderTopRow() {
   ident.addEventListener('click', openPicker);
 
   els.topRow.appendChild(h('div', { class: 'top-row__left' }, back, ident));
-  els.topRow.appendChild(h('span', { class: 'product', text: 'Open Floor' }));
+  els.topRow.appendChild(placeActions(g));
 }
 
 // ---- date strip ----
@@ -1373,6 +1371,7 @@ function buildFilterGym(row, classes, isToday, nowMs, tz) {
 
 // ---- share a gym's name + address ----
 
+const MAP_PIN_SVG = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
 const SHARE_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
 
 // "Black Swan Yoga Orchard", not "Black Swan Yoga — Orchard": plain words
@@ -1442,17 +1441,20 @@ function shareButton(g, cls, mode = 'text', label = `Share ${placeName(g)} addre
   return btn;
 }
 
-function renderPlaceBar(g) {
-  els.placeBar.innerHTML = '';
-  els.placeBar.hidden = !(g && g.address);
-  if (!g || !g.address) return;
-  els.placeBar.appendChild(h('span', { class: 'place__addr', text: g.address }));
-  els.placeBar.appendChild(h('a', {
-    class: 'place__maps',
-    attrs: { href: mapsUrl(g), target: '_blank', rel: 'noopener' },
-    text: 'Maps',
-  }));
-  els.placeBar.appendChild(gymShareButton(g, 'place__share'));
+// Detail top row, right side: Maps + share icons for this gym, in place of
+// the product label (no extra row: vertical space matters on a phone). The
+// address itself isn't shown; it rides in the Maps / share links.
+function placeActions(g) {
+  if (!g || !g.address) return h('span', { class: 'product', text: 'Open Floor' });
+  const maps = h('a', {
+    class: 'place-btn',
+    attrs: {
+      href: mapsUrl(g), target: '_blank', rel: 'noopener',
+      'aria-label': `Open ${placeName(g)} in Maps`, title: 'Maps',
+    },
+  });
+  maps.innerHTML = MAP_PIN_SVG;
+  return h('span', { class: 'place-actions' }, maps, gymShareButton(g, 'place-btn'));
 }
 
 // Icon-only share. Sends the Google Maps place link (name + address reach
