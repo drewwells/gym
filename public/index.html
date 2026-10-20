@@ -29,24 +29,29 @@
       <!-- Board view (the brand directory home). Hero summarizes "is anyone
            open right now?" across every brand; the directory below it is a
            collapsible accordion grouped by brand, with the user's pinned
-           brand at the top. Footer is the persistence/handoff strip. -->
+           brand at the top. -->
       <div id="boardView" class="view view-board">
         <!-- Outer wrapper is .board-hero only — no .hero class, otherwise
              .hero's border-bottom + padding-double up with the inner. -->
-        <!-- Class search (?q=). Collapsed to the top-row search icon until
-             tapped; a non-empty query swaps the hero + accordion for a
-             class-only view (matching classes under each gym, board order). -->
-        <div id="classFilterBar" class="class-filter" hidden>
-          <div class="class-filter__box">
-            <svg class="class-filter__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-            <label for="classFilter" class="visually-hidden">Find a class by name</label>
-            <input id="classFilter" class="class-filter__input" type="search" placeholder="Class name, e.g. flow" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
-          </div>
-          <button id="classFilterClose" class="class-filter__close" type="button">Close</button>
-        </div>
         <div id="boardHero" class="board-hero"></div>
         <div id="boardList" class="brand-list" role="list"></div>
-        <div id="boardFooter" class="board-footer"></div>
+        <!-- Home bottom bar (Drew, 2026-10-20, mockup 1 + 3): the day strip
+             (moved in here while the board shows) over a full-width class
+             search. While searching, the strip hides and Close appears, so
+             the field sits right above the keyboard with results above it.
+             A non-empty query (?q=) swaps the hero + accordion for a
+             class-only view (matching classes under each gym, board order). -->
+        <nav id="boardBar" class="board-bar" aria-label="Day and class search">
+          <div id="boardStripSlot"></div>
+          <div id="classFilterBar" class="class-filter">
+            <div class="class-filter__box">
+              <svg class="class-filter__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              <label for="classFilter" class="visually-hidden">Find a class by name</label>
+              <input id="classFilter" class="class-filter__input" type="search" placeholder="Find a class, e.g. flow" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+            </div>
+            <button id="classFilterClose" class="class-filter__close" type="button" hidden>Close</button>
+          </div>
+        </nav>
       </div>
 
       <!-- Detail view: existing per-gym swipe deck. Hidden until the user
