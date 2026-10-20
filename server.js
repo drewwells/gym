@@ -4,14 +4,15 @@ const express = require('express');
 const { GYMS, getGym, publicGym } = require('./gyms');
 const { todayInTz, tzMidnightUTC } = require('./lib/time');
 const { computeOpenFloor } = require('./lib/availability');
-const { summarizeBoardDay } = require('./lib/board');
+const { summarizeBoardDay, dayClasses } = require('./lib/board');
 
 const crux = require('./providers/crux');
 const crunch = require('./providers/crunch');
 const lafitness = require('./providers/lafitness');
 const golds = require('./providers/golds');
+const blackswan = require('./providers/blackswan');
 
-const PROVIDERS = { crux, crunch, lafitness, golds };
+const PROVIDERS = { crux, crunch, lafitness, golds, blackswan };
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -147,7 +148,10 @@ app.get('/api/availability', async (req, res) => {
   try {
     const week = await getWeek(gym, date, { refresh: req.query.refresh === '1' });
     const openFloor = computeOpenFloor(week.events, gym, date);
-    res.json({ gymId: gym.id, cached: week.cached, stale: week.stale, ...openFloor });
+    res.json({
+      gymId: gym.id, cached: week.cached, stale: week.stale, ...openFloor,
+      allClasses: dayClasses(week.events, date),
+    });
   } catch (err) {
     console.error(`[${gym.id}] availability failed:`, err.message);
     res.status(502).json({ error: 'Failed to compute availability', detail: err.message });

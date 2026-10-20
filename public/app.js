@@ -33,6 +33,7 @@ const BRAND_MARK = {
   'LA Fitness': 'LA',
   'Crux': 'CX',
   "Gold's Gym": 'GG',
+  'Black Swan Yoga': 'BS',
 };
 
 const els = {
@@ -42,6 +43,9 @@ const els = {
   // Board view (brand directory).
   boardView: document.getElementById('boardView'),
   boardHero: document.getElementById('boardHero'),
+  classFilterBar: document.getElementById('classFilterBar'),
+  classFilter: document.getElementById('classFilter'),
+  classFilterClose: document.getElementById('classFilterClose'),
   boardList: document.getElementById('boardList'),
   boardFooter: document.getElementById('boardFooter'),
   // Detail view.
@@ -90,6 +94,10 @@ let currentGymId = null;      // detail only
 let anchorTz = DEFAULT_TZ;    // tz used to compute "today" for the date strip
 let today = null;             // YYYY-MM-DD in anchorTz, rolls at midnight
 let dayOffset = 0;            // 0 = today, up to STRIP_DAYS-1
+// Board class-name filter, mirrored in the URL as ?q= (board view only).
+// Kept while drilled into a gym so "back" returns to the same results.
+let classQuery = '';
+let searchOpen = false;       // search bar expanded (always true while q is set)
 
 const dayCache = new Map();   // `${gymId}:${date}` -> parsed day | { error }
 const dayInflight = new Map();
@@ -146,6 +154,9 @@ async function init() {
     if (e.key === 'Escape' && !els.sheet.hidden) closePicker();
   });
   window.addEventListener('popstate', () => route({ push: false }));
+  els.classFilter.addEventListener('input', () => setClassQuery(els.classFilter.value));
+  els.classFilterClose.addEventListener('click', closeSearch);
+  els.classFilter.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSearch(); });
   attachSwipe();
 
   // 3. Read the URL once, then render.
@@ -169,23 +180,27 @@ function parseLocation() {
   }
   if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) date = null;
   if (gymId && !gyms.has(gymId)) gymId = null;
-  return { gymId, date };
+  const q = url.searchParams.get('q') || '';
+  return { gymId, date, q };
 }
 
-function buildUrl({ gymId, date }) {
+function buildUrl({ gymId, date, q = classQuery }) {
   const qs = new URLSearchParams();
   if (gymId) qs.set('gym', gymId);
   if (date) qs.set('date', date);
-  const q = qs.toString();
-  return q ? `/?${q}` : '/';
+  if (!gymId && q.trim()) qs.set('q', q.trim());
+  const search = qs.toString();
+  return search ? `/?${search}` : '/';
 }
 
 // Read the URL, snap state to it, then render. `push` controls whether we
 // replace the entry (popstate / initial load) or push a new one (a fresh
 // in-app nav).
 function route({ push }) {
-  const { gymId, date } = parseLocation();
+  const { gymId, date, q } = parseLocation();
   const newView = gymId ? 'detail' : 'board';
+  if (!gymId) classQuery = q;
+  syncClassFilterInput();
   const tz = gymId ? (gyms.get(gymId)?.tz || anchorTz) : anchorTz;
   today = todayInTz(tz);
   const targetDate = date || today;
@@ -223,6 +238,36 @@ function setDayOffset(offset, { push = true } = {}) {
   syncDayStrip();
   if (view === 'board') renderBoard();
   else renderDetailSlides();
+}
+
+// Typing in the filter replaces (not pushes) the history entry so back
+// doesn't step through every keystroke.
+function setClassQuery(value) {
+  classQuery = value;
+  syncClassFilterInput();
+  const date = dayOffset === 0 ? null : addDays(today, dayOffset);
+  history.replaceState({}, '', buildUrl({ gymId: null, date }));
+  els.boardList.scrollTop = 0;
+  if (view === 'board') renderBoard();
+}
+
+function syncClassFilterInput() {
+  if (classQuery) searchOpen = true;
+  if (els.classFilter.value !== classQuery) els.classFilter.value = classQuery;
+  els.classFilterBar.hidden = !searchOpen;
+}
+
+function openSearch() {
+  searchOpen = true;
+  syncClassFilterInput();
+  renderTopRow();
+  els.classFilter.focus();
+}
+
+function closeSearch() {
+  searchOpen = false;
+  setClassQuery('');
+  renderTopRow();
 }
 
 // ---- shell rendering ----
@@ -264,16 +309,30 @@ function renderTopRow() {
   if (view === 'board') {
     // Brand-directory home: left = "OPEN FLOOR" wordmark, right = brand /
     // floor counts ("4 brands · 11 floors"). Both mono, 10.5px, uppercase.
-    const liveCount = [...gyms.values()].filter((g) => g.status === 'live').length;
-    const totalCount = gyms.size;
+    // Classes-only studios have no floor, so they don't count as floors.
+    const floorGyms = [...gyms.values()].filter((g) => !g.classesOnly);
+    const liveCount = floorGyms.filter((g) => g.status === 'live').length;
+    const totalCount = floorGyms.length;
     const floors = totalCount === 1 ? '1 floor' : `${totalCount} floors`;
     const brands = brandOrder.length === 1 ? '1 brand' : `${brandOrder.length} brands`;
     els.topRow.appendChild(h('span', { class: 'top-row__wordmark', text: 'Open Floor' }));
-    els.topRow.appendChild(h('span', {
-      class: 'top-row__meta',
-      text: `${brands} · ${floors}`,
-      attrs: { 'aria-label': `${brandOrder.length} brands, ${liveCount} live of ${totalCount} total floors` },
-    }));
+    const right = h('span', { class: 'top-row__right' },
+      h('span', {
+        class: 'top-row__meta',
+        text: `${brands} · ${floors}`,
+        attrs: { 'aria-label': `${brandOrder.length} brands, ${liveCount} live of ${totalCount} total floors` },
+      }),
+    );
+    if (!searchOpen) {
+      const btn = h('button', {
+        class: 'search-btn',
+        attrs: { type: 'button', 'aria-label': 'Find a class', 'aria-controls': 'classFilterBar', 'aria-expanded': 'false' },
+      });
+      btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
+      btn.addEventListener('click', openSearch);
+      right.appendChild(btn);
+    }
+    els.topRow.appendChild(right);
     return;
   }
 
@@ -373,9 +432,11 @@ function renderBoard() {
   // answers "what's open in MY brands right now?" instead of broadcasting
   // across the city. Falls back to the all-brands hero when myBrands is
   // empty (the user explicitly un-pinned everything).
+  // Classes-only studios (no dance floor) never count toward the hero.
+  const floorRows = decorated.filter((r) => !r.row.classesOnly);
   const heroRows = myBrands.size > 0
-    ? decorated.filter((r) => myBrands.has(r.row.brand))
-    : decorated;
+    ? floorRows.filter((r) => myBrands.has(r.row.brand))
+    : floorRows;
   // Hero fallback tz for branches with no single referenced gym (e.g. "done
   // for the day"): use the scoped rows' shared tz when they all agree,
   // otherwise the anchor. The best-bet / next-up branches override this with
@@ -383,6 +444,12 @@ function renderBoard() {
   const heroTz = heroRows.length && heroRows.every((r) => r.row.tz === heroRows[0].row.tz)
     ? heroRows[0].row.tz
     : tz;
+  if (classQuery.trim()) {
+    renderClassFilter(decorated, isToday, nowMs, date);
+    renderBoardFooter();
+    return;
+  }
+
   els.boardHero.innerHTML = '';
   els.boardHero.appendChild(buildBoardHero(heroRows, isToday, nowMs, heroTz, date, scopeBrandName()));
 
@@ -411,6 +478,7 @@ function renderBoard() {
 function gymStatus(row, nowMs, isToday) {
   if (row.status === 'coming-soon') return { kind: 'soon' };
   if (row.error || !row.day) return { kind: 'error' };
+  if (row.classesOnly) return classesStatus(row, nowMs, isToday);
   if (!isToday) {
     const gaps = row.day.gaps || [];
     return {
@@ -442,8 +510,20 @@ function gymStatus(row, nowMs, isToday) {
   return { kind: 'done' };
 }
 
+// Classes-only studio: no floor to free up, so its status is just "what's
+// on next". Today counts the classes not yet over; other days, the total.
+function classesStatus(row, nowMs, isToday) {
+  const all = row.day.allClasses || [];
+  if (!isToday) return { kind: 'classes', count: all.length, next: all[0] || null, live: null };
+  const left = all.filter((c) => new Date(c.endDT).getTime() > nowMs);
+  const live = left.find((c) => new Date(c.startDT).getTime() <= nowMs) || null;
+  const next = left.find((c) => new Date(c.startDT).getTime() > nowMs) || null;
+  return { kind: 'classes', count: left.length, next, live };
+}
+
 function statusRank(st) {
   if (st.kind === 'open') return 0;
+  if (st.kind === 'classes') return st.next || st.live ? 1 : 2;
   if (st.kind === 'upcoming' || st.kind === 'inClass') return 1;
   if (st.kind === 'other') return st.windowCount > 0 ? 0 : 2;
   return 2; // done / error / soon
@@ -457,6 +537,10 @@ function statusTiebreak(a, b) {
     return new Date(a.nextGap.startDT) - new Date(b.nextGap.startDT);
   if (a.kind === 'inClass' && b.kind === 'inClass') return a.until - b.until;
   if (a.kind === 'other' && b.kind === 'other') return b.totalOpenMin - a.totalOpenMin;
+  if (a.kind === 'classes' && b.kind === 'classes') {
+    const t = (st) => (st.next ? new Date(st.next.startDT).getTime() : Infinity);
+    return t(a) - t(b);
+  }
   return 0;
 }
 
@@ -553,11 +637,14 @@ function bestBetLabel(row, scopeBrand) {
 function buildBrandGroupHeader(brand, groupRows, isToday) {
   const isMine = myBrands.has(brand);
   const isCollapsed = brandCollapsed.has(brand);
-  const liveRows = groupRows.filter(({ row }) => row.status === 'live' && row.day);
+  const liveRows = groupRows.filter(({ row }) => row.status === 'live' && row.day && !row.classesOnly);
   const openish = liveRows.filter(({ st }) => st.kind === 'open' || (st.kind === 'other' && st.windowCount > 0)).length;
-  const metaText = isToday
+  let metaText = isToday
     ? `${openish} of ${liveRows.length} open`
     : `${openish} of ${liveRows.length} with time`;
+  if (groupRows.every(({ row }) => row.classesOnly)) {
+    metaText = `${groupRows.length} ${groupRows.length === 1 ? 'studio' : 'studios'} · classes only`;
+  }
 
   const head = h('button', {
     class: `brand-head${isCollapsed ? ' is-collapsed' : ''}`,
@@ -618,7 +705,8 @@ function buildGymRow(row, st, tz) {
   const isOpen = st.kind === 'open';
   const isSoon = st.kind === 'soon';
   const dim = st.kind === 'done' || st.kind === 'error' || st.kind === 'soon'
-    || (st.kind === 'other' && (!st.windowCount || st.windowCount === 0));
+    || (st.kind === 'other' && (!st.windowCount || st.windowCount === 0))
+    || (st.kind === 'classes' && !st.next && !st.live);
 
   const node = h('button', {
     class: `gym-row${isOpen ? ' is-open' : ''}${dim ? ' is-dim' : ''}${isSoon ? ' is-soon' : ''}`,
@@ -675,6 +763,11 @@ function rowStatusLine(st, tz) {
     return st.windowCount > 0
       ? { text: `First window ${fmt12LongIso(st.first.startDT, tz)}`, live: false }
       : { text: 'Studio fully booked', live: false };
+  if (st.kind === 'classes') {
+    if (st.live) return { text: `${st.live.name} in session`, live: false };
+    if (st.next) return { text: `Next ${fmt12LongIso(st.next.startDT, tz)} · ${st.next.name}`, live: false };
+    return { text: st.count ? 'Done for today' : 'No classes', live: false };
+  }
   if (st.kind === 'soon') return { text: 'Coming soon', live: false };
   if (st.kind === 'error') return { text: "Couldn't read schedule", live: false };
   return { text: 'Done for today', live: false };
@@ -698,6 +791,8 @@ function rowMetric(st, tz) {
     }
     return { num: '—', label: 'no time', muted: true };
   }
+  if (st.kind === 'classes')
+    return { num: String(st.count), label: st.count === 1 ? 'class' : 'classes', muted: !st.next && !st.live };
   if (st.kind === 'soon') return { num: '—', label: 'soon', muted: true };
   if (st.kind === 'error') return { num: '—', label: 'unknown', muted: true };
   return { num: '—', label: 'done', muted: true };
@@ -940,6 +1035,10 @@ function buildDetailPanel(rec, offset, g) {
   const isToday = offset === 0;
   const tz = g.tz || anchorTz;
   const nowMin = nowMinutesInTz(tz);
+  if (g.classesOnly) {
+    buildClassesOnlyPanel(panel, rec, isToday, nowMin);
+    return panel;
+  }
   if (isToday) {
     const state = nowState(rec, nowMin);
     panel.appendChild(heroToday(rec, state, nowMin, g));
@@ -1115,6 +1214,153 @@ function classRow(e, live) {
   );
 }
 
+// Detail for a classes-only studio: no floor, so the hero is "what's on
+// next" and the list is every class that day.
+function buildClassesOnlyPanel(panel, day, isToday, nowMin) {
+  const classes = day.allClasses || [];
+  const p = dateParts(day.date);
+  if (isToday) {
+    const live = classes.find((c) => nowMin >= c.start && nowMin < c.end);
+    const next = classes.find((c) => c.start > nowMin);
+    let head;
+    if (live) head = heroHead(accent(live.name), br(), `until ${fmt12(live.end)}`);
+    else if (next) head = heroHead(accent(next.name), br(), `at ${fmt12(next.start)}`);
+    else head = heroHead('Classes ', accent('done'), br(), 'for today');
+    panel.appendChild(hero(
+      live ? 'Right now · in session' : 'Classes only · next up',
+      head,
+      sub(`${classes.length} ${classes.length === 1 ? 'class' : 'classes'} today. No open floor here — it's a yoga studio.`),
+    ));
+  } else {
+    panel.appendChild(hero(
+      `${p.dowLong} · ${p.month} ${p.dom}`,
+      heroHead(accent(String(classes.length)), classes.length === 1 ? ' class' : ' classes'),
+      sub("Classes only — no open floor here, it's a yoga studio."),
+    ));
+  }
+  const list = h('div', { class: 'list' });
+  if (!classes.length) {
+    list.appendChild(h('div', { class: 'empty', text: 'Nothing on the schedule.' }));
+  } else {
+    list.appendChild(sectionTitle('Classes'));
+    for (const c of classes) {
+      const row = classRow(c, isToday && nowMin >= c.start && nowMin < c.end);
+      if (!isToday || c.end > nowMin) row.classList.add('is-ahead');
+      list.appendChild(row);
+    }
+  }
+  panel.appendChild(list);
+}
+
+// ---- board class-name filter ----
+
+// Filter mode replaces the hero + accordion with every class on the chosen
+// day whose name contains the query (case-insensitive), grouped under its
+// gym. Brands and gyms keep exactly the order the board would show them in
+// (pinned brands first; within a brand, the same status sort), and brands
+// with no match collapse into one dimmed line at the bottom.
+function renderClassFilter(decorated, isToday, nowMs, date) {
+  const q = classQuery.trim().toLowerCase();
+  const tz = anchorTz;
+  const blocks = [];
+  const missBrands = [];
+  let nClasses = 0;
+  let nGyms = 0;
+  for (const brand of brandOrder) {
+    const groupRows = decorated.filter((r) => r.row.brand === brand && r.row.status === 'live');
+    if (!groupRows.length) continue;
+    groupRows.sort((a, b) => statusRank(a.st) - statusRank(b.st) || statusTiebreak(a.st, b.st));
+    const hits = groupRows
+      .map(({ row }) => ({
+        row,
+        classes: ((row.day && row.day.allClasses) || []).filter((c) => c.name.toLowerCase().includes(q)),
+      }))
+      .filter((x) => x.classes.length);
+    if (!hits.length) { missBrands.push(brand); continue; }
+    const block = h('div', { class: 'filter-brand', attrs: { role: 'listitem' } },
+      h('div', { class: 'filter-brand__head' },
+        h('span', { class: 'gym-row__swatch filter-brand__swatch', attrs: { 'aria-hidden': 'true' }, text: brandMark(brand) }),
+        h('span', { class: 'filter-brand__name', text: brand }),
+      ),
+    );
+    for (const { row, classes } of hits) {
+      nGyms++;
+      nClasses += classes.length;
+      block.appendChild(buildFilterGym(row, classes, isToday, nowMs, tz));
+    }
+    blocks.push(block);
+  }
+
+  const p = dateParts(date);
+  els.boardHero.innerHTML = '';
+  els.boardHero.appendChild(h('p', {
+    class: 'filter-summary',
+    attrs: { role: 'status' },
+    text: nClasses
+      ? `${nClasses} ${nClasses === 1 ? 'class' : 'classes'} at ${nGyms} ${nGyms === 1 ? 'gym' : 'gyms'} · ${p.dowLong} ${p.month} ${p.dom}`
+      : `No classes match “${classQuery.trim()}” on ${p.dowLong} ${p.month} ${p.dom}`,
+  }));
+
+  els.boardList.innerHTML = '';
+  for (const b of blocks) els.boardList.appendChild(b);
+  if (missBrands.length && nClasses) {
+    els.boardList.appendChild(h('div', {
+      class: 'filter-miss', attrs: { role: 'listitem' }, text: `No matches at ${missBrands.join(', ')}`,
+    }));
+  }
+}
+
+function buildFilterGym(row, classes, isToday, nowMs, tz) {
+  const rowTz = row.tz || tz;
+  const wrap = h('div', { class: 'filter-gym' });
+  const head = h('button', {
+    class: 'filter-gym__name',
+    attrs: { type: 'button', 'aria-label': `${row.brand || ''} ${row.short || row.name || ''} — open schedule`.trim() },
+    text: row.short || row.name || '',
+  });
+  head.addEventListener('click', () => {
+    const d = dayOffset === 0 ? null : addDays(today, dayOffset);
+    navigate({ gymId: row.id, date: d });
+  });
+  wrap.appendChild(head);
+  // Each class links as deep as its provider allows (the class's booking
+  // page for Crunch/Crux, otherwise the studio's schedule); spots left show
+  // only where the provider reports capacity.
+  for (const c of classes) {
+    const past = isToday && new Date(c.endDT).getTime() <= nowMs;
+    const spots = spotsLabel(c);
+    const link = h('a', {
+      class: `filter-class${past ? ' is-past' : ''}`,
+      attrs: {
+        href: c.deepLink || row.sourceUrl || '#',
+        target: '_blank',
+        rel: 'noopener',
+        'aria-label': [
+          `${c.name}, ${fmt12LongIso(c.startDT, rowTz)} to ${fmt12LongIso(c.endDT, rowTz)}`,
+          spots && spots.text,
+          row.requiresRegistration ? 'registration required' : '',
+        ].filter(Boolean).join(', '),
+      },
+    },
+      h('span', { class: 'filter-class__time', text: fmt12Iso(c.startDT, rowTz) }),
+      h('span', { class: 'filter-class__name', text: c.name }),
+      row.requiresRegistration
+        ? h('span', { class: 'filter-class__register', text: 'Register' })
+        : h('span', {}),
+      h('span', { class: `filter-class__spots${spots && spots.full ? ' is-full' : ''}`, text: spots ? spots.text : '' }),
+      h('span', { class: 'filter-class__chev', attrs: { 'aria-hidden': 'true' }, text: '›' }),
+    );
+    wrap.appendChild(link);
+  }
+  return wrap;
+}
+
+function spotsLabel(c) {
+  if (c.seatsRemaining == null) return null;
+  if (c.seatsRemaining <= 0) return { text: 'Full', full: true };
+  return { text: c.seatsTotal ? `${c.seatsRemaining}/${c.seatsTotal} open` : `${c.seatsRemaining} open`, full: false };
+}
+
 // ---- detail-day data loading ----
 
 function cacheKey(date, id = currentGymId) { return `${id}:${date}`; }
@@ -1157,10 +1403,14 @@ function parseDay(data, date, tz) {
   }
   events.sort((a, b) => a.start - b.start);
   gaps.sort((a, b) => a.start - b.start);
+  const allClasses = (data.allClasses || []).map((c) => ({
+    name: c.name, room: c.room, start: isoToMinutes(c.startDT, tz), end: isoToMinutes(c.endDT, tz),
+  }));
   return {
     date,
     ...dateParts(date),
     events,
+    allClasses,
     gaps,
     totalOpenMin: gaps.reduce((s, g) => s + g.minutes, 0),
   };

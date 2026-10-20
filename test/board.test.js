@@ -168,3 +168,33 @@ test('sortBoardRows: full registry-shape sort produces the expected board order'
     'crux-central',
   ]);
 });
+
+test('summarizeBoardDay: allClasses lists every class that day, any room, sorted', () => {
+  const s = summarizeBoardDay([
+    ev('Ride', 18, 19, { danceSuitable: false, name: 'Cycle' }),
+    ev('Studio', 9, 10, { name: 'Vinyasa Flow' }),
+    ev('Studio', 9, 10, { name: 'Tomorrow', date: '2026-05-26' }),
+  ], GYM, DATE);
+  assert.deepEqual(s.allClasses.map((c) => [c.name, c.room]), [['Vinyasa Flow', 'Studio'], ['Cycle', 'Ride']]);
+  assert.equal(s.events.length, 1); // the floor view still only sees the dance room
+  assert.equal(s.allClasses[0].seatsRemaining, null); // no capacity data → null, not 0
+});
+
+test('dayClasses carries spots left and the class deep link', () => {
+  const { dayClasses } = require('../lib/board');
+  const [c] = dayClasses([{ ...ev('Studio', 9, 10), seatsRemaining: 0, seatsTotal: 25, deepLink: 'https://x/class/1' }], DATE);
+  assert.equal(c.seatsRemaining, 0);
+  assert.equal(c.seatsTotal, 25);
+  assert.equal(c.deepLink, 'https://x/class/1');
+});
+
+test('summarizeBoardDay: a classes-only gym (no dance rooms) has classes but no floor', () => {
+  const s = summarizeBoardDay(
+    [ev('Studio', 9, 10, { danceSuitable: false, name: 'Flow' })],
+    { ...GYM, danceRooms: [], classesOnly: true },
+    DATE,
+  );
+  assert.equal(s.allClasses.length, 1);
+  assert.equal(s.windowCount, 0);
+  assert.equal(s.events.length, 0);
+});

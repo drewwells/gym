@@ -546,6 +546,200 @@ body {
   line-height: 1;
 }
 
+/* ---- brand-directory home: class-name filter ----
+   Sits between the day strip and the hero. With a query, the hero slot
+   holds a one-line result count and the list holds matching classes
+   grouped by brand → gym, in the board's own order. */
+.class-filter {
+  flex: 0 0 auto;
+  padding: 10px 12px 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.class-filter[hidden] { display: none; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.class-filter__box {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 0 0 12px;
+  border: 1.5px solid var(--handle);
+  border-radius: 10px;
+  background: #fbf7ef;
+  color: var(--muted);
+}
+
+.class-filter__box:focus-within { border-color: var(--ink); }
+
+.class-filter__icon { flex: 0 0 auto; }
+
+.class-filter__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: 500 16px var(--body); /* 16px keeps iOS from zooming on focus */
+  color: var(--ink);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.class-filter__input::-webkit-search-cancel-button { display: none; }
+.class-filter__input::placeholder { color: var(--muted-2); font-weight: 400; }
+
+.class-filter__close {
+  flex: 0 0 auto;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  font: 600 14px var(--body);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.top-row__right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.search-btn {
+  margin: -15px -12px -15px 0; /* keep the 44px target without growing the row */
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.filter-summary {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.view-board .board-hero:has(> .filter-summary) { padding: 0 22px 10px; }
+
+.filter-brand {
+  border-top: 1px solid var(--divider);
+  padding: 12px 22px 8px;
+}
+
+.filter-brand__head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.filter-brand__swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 10px;
+}
+
+.filter-brand__name {
+  font-family: var(--body);
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.filter-gym { padding: 6px 0 2px 37px; }
+
+.filter-gym__name {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  min-height: 32px;
+  font: 600 15px var(--body);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--handle);
+  text-underline-offset: 3px;
+}
+
+.filter-class {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto auto 12px;
+  align-items: center;
+  column-gap: 8px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--hairline-row);
+  font-size: 14px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.filter-class:last-child { border-bottom: 0; }
+.filter-class.is-past { color: var(--muted-2); }
+
+.filter-class__time {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.filter-class__name { min-width: 0; overflow-wrap: anywhere; padding: 6px 0; }
+
+.filter-class__register {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 2px 6px;
+}
+
+.filter-class__spots {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  text-align: right;
+}
+
+.filter-class__spots.is-full { color: #a3401f; }
+.filter-class.is-past .filter-class__spots { color: inherit; }
+
+.filter-class__chev { color: var(--muted); }
+
+.filter-miss {
+  border-top: 1px solid var(--divider);
+  padding: 12px 22px 16px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
 /* ---- brand-directory home: footer ---- */
 .board-footer {
   flex: 0 0 auto;
@@ -729,6 +923,7 @@ body {
 }
 
 .class-row.is-live { color: var(--ink); }
+.class-row.is-ahead { color: var(--ink-soft); } /* classes-only detail: not over yet */
 
 .class-row-time {
   font-family: var(--mono);
