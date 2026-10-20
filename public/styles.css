@@ -956,52 +956,39 @@ body {
 }
 
 /* ---- source footer ---- */
-/* ---- detail: address + Maps / share icon ----
-   Sized 1.5x the original bar (Drew, 2026-10-20): type, icon, targets and
-   padding all scaled up. */
-.place {
+/* ---- detail top row: Maps + share icons (replace the product label) ----
+   44px targets with 24px icons; negative margins keep the row from growing. */
+.place-actions {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0 6px;
-  padding: 12px 12px 4px 22px;
-  border-top: 1px solid var(--divider);
-}
-
-.place[hidden] { display: none; }
-
-.place__addr {
-  flex: 1 1 100%; /* own line; Maps + share icon below */
-  min-width: 0;
-  font-size: 19.5px;
-  line-height: 1.3;
-  color: var(--ink-soft);
-}
-
-
-.place__maps,
-.place__share {
+  margin: -8px -12px -8px 0;
   flex: 0 0 auto;
-  min-height: 66px;
-  min-width: 66px;
-  justify-content: center;
-  padding: 0 12px;
+}
+
+.place-btn {
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: 10px;
   background: transparent;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font: 600 21px var(--body);
   color: var(--accent);
-  text-decoration: none;
+  display: grid;
+  place-items: center;
   cursor: pointer;
+  position: relative;
 }
 
-.place__maps { margin-left: -12px; }
-.place__share svg { width: 27px; height: 27px; }
-.place__share.is-flashed svg { display: none; }
-.place__share.is-flashed::after { content: attr(data-label); font-size: 16px; }
+.place-btn svg { width: 24px; height: 24px; }
+
+.place-btn.is-flashed::after {
+  content: attr(data-label);
+  position: absolute;
+  top: 42px;
+  right: 0;
+  font: 500 11px var(--mono);
+  color: var(--accent);
+  white-space: nowrap;
+}
 
 .filter-gym__head {
   display: flex;
