@@ -41,6 +41,10 @@
 //                 falls back to usableWindow alone.
 //   minGapMinutes shortest free block worth showing in Open Floor
 //   sourceUrl     public schedule page (footer source link href)
+//   classesOnly   optional; true for a studio with no dance-suitable floor
+//                 (danceRooms: []). Its classes feed the board's class list
+//                 and name filter, but it never counts toward the Open Floor
+//                 hero or "N of M open" rollups.
 
 const DEFAULT_USABLE_WINDOW = { start: '06:00', end: '22:00' };
 const DEFAULT_MIN_GAP = 30;
@@ -525,6 +529,122 @@ const GYMS = [
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.goldsgym.com/locations/tn/chapman/',
   },
+
+  // --- Black Swan Yoga (new platform, added 2026-10-20) -----------------
+  // Donation-based hot-yoga studios on Mindbody (see providers/blackswan.js
+  // for the widget endpoint). No dance floor and no published hours, so
+  // every studio is `classesOnly`: listed for its classes and the name
+  // filter, kept out of the Open Floor hero. `widgetId` is the
+  // data-widget-id on blackswanyoga.com/studios/<slug> (verified
+  // 2026-10-20); these are the six Austin-area studios.
+  {
+    id: 'blackswan-anderson',
+    name: 'Black Swan Yoga — Anderson',
+    brand: 'Black Swan Yoga',
+    short: 'Anderson',
+    neighborhood: 'North Austin',
+    room: 'Studio',
+    sourceHost: 'blackswanyoga.com',
+    provider: 'blackswan',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { widgetId: '1a68132bd21' },
+    classesOnly: true,
+    danceRooms: [],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.blackswanyoga.com/studios/anderson',
+  },
+  {
+    id: 'blackswan-cedar-park',
+    name: 'Black Swan Yoga — Cedar Park',
+    brand: 'Black Swan Yoga',
+    short: 'Cedar Park',
+    neighborhood: 'Cedar Park, TX',
+    room: 'Studio',
+    sourceHost: 'blackswanyoga.com',
+    provider: 'blackswan',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { widgetId: '1a31874bd21' },
+    classesOnly: true,
+    danceRooms: [],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.blackswanyoga.com/studios/cedar-park',
+  },
+  {
+    id: 'blackswan-cesar-chavez',
+    name: 'Black Swan Yoga — Cesar Chavez',
+    brand: 'Black Swan Yoga',
+    short: 'Cesar Chavez',
+    neighborhood: 'East Austin',
+    room: 'Studio',
+    sourceHost: 'blackswanyoga.com',
+    provider: 'blackswan',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { widgetId: '1a68134bd21' },
+    classesOnly: true,
+    danceRooms: [],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.blackswanyoga.com/studios/cesar-chavez',
+  },
+  {
+    id: 'blackswan-orchard',
+    name: 'Black Swan Yoga — Orchard',
+    brand: 'Black Swan Yoga',
+    short: 'Orchard',
+    neighborhood: 'Clarksville (W 5th St)',
+    room: 'Studio',
+    sourceHost: 'blackswanyoga.com',
+    provider: 'blackswan',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { widgetId: '1a68144bd21' },
+    classesOnly: true,
+    danceRooms: [],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.blackswanyoga.com/studios/orchard',
+  },
+  {
+    id: 'blackswan-round-rock',
+    name: 'Black Swan Yoga — Round Rock',
+    brand: 'Black Swan Yoga',
+    short: 'Round Rock',
+    neighborhood: 'Round Rock, TX',
+    room: 'Studio',
+    sourceHost: 'blackswanyoga.com',
+    provider: 'blackswan',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { widgetId: '1a68145bd21' },
+    classesOnly: true,
+    danceRooms: [],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.blackswanyoga.com/studios/round-rock',
+  },
+  {
+    id: 'blackswan-westgate',
+    name: 'Black Swan Yoga — Westgate',
+    brand: 'Black Swan Yoga',
+    short: 'Westgate',
+    neighborhood: 'South Austin',
+    room: 'Studio',
+    sourceHost: 'blackswanyoga.com',
+    provider: 'blackswan',
+    status: 'live',
+    tz: 'America/Chicago',
+    providerConfig: { widgetId: '1a68146bd21' },
+    classesOnly: true,
+    danceRooms: [],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.blackswanyoga.com/studios/westgate',
+  },
 ];
 
 const byId = new Map(GYMS.map((g) => [g.id, g]));
@@ -558,6 +678,10 @@ function publicGym(g) {
     hoursByDay: g.hoursByDay || null,
     minGapMinutes: g.minGapMinutes,
     sourceUrl: g.sourceUrl,
+    classesOnly: Boolean(g.classesOnly),
+    // Crunch classes must be booked ahead in its app; the class search shows
+    // a "Register" badge on them.
+    requiresRegistration: g.provider === 'crunch',
   };
 }
 
