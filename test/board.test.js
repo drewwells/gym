@@ -198,3 +198,11 @@ test('summarizeBoardDay: a classes-only gym (no dance rooms) has classes but no 
   assert.equal(s.windowCount, 0);
   assert.equal(s.events.length, 0);
 });
+
+test('registry: every gym has a full street address for share / maps', () => {
+  const { GYMS, publicGym } = require('../gyms');
+  for (const g of GYMS) {
+    assert.match(g.address || '', /^\d+ .+, [A-Za-z .]+, (TX|TN) \d{5}$/, g.id);
+    assert.equal(publicGym(g).address, g.address, g.id);
+  }
+});

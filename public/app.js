@@ -53,6 +53,7 @@ const els = {
   swipe: document.getElementById('swipe'),
   track: document.getElementById('track'),
   sourceLink: document.getElementById('sourceLink'),
+  placeBar: document.getElementById('placeBar'),
   // Picker sheet (used in detail view).
   sheet: document.getElementById('sheet'),
   sheetScrim: document.getElementById('sheetScrim'),
@@ -289,6 +290,7 @@ function renderShell() {
     const g = gym(currentGymId);
     els.sourceLink.href = g?.sourceUrl || '#';
     els.sourceLink.textContent = `${g?.sourceHost || 'source'} ↗`;
+    renderPlaceBar(g);
     renderDetailSlides();
     // Same idea for detail: pull the whole strip up front so swiping /
     // chip-clicks are instant. Server-side caching means one upstream call.
@@ -1332,7 +1334,11 @@ function buildFilterGym(row, classes, isToday, nowMs, tz) {
     const d = dayOffset === 0 ? null : addDays(today, dayOffset);
     navigate({ gymId: row.id, date: d });
   });
-  wrap.appendChild(head);
+  if (row.address) {
+    wrap.appendChild(h('div', { class: 'filter-gym__head' }, head, shareButton(row, 'filter-gym__share')));
+  } else {
+    wrap.appendChild(head);
+  }
   // Each class links as deep as its provider allows (the class's booking
   // page for Crunch/Crux, otherwise the studio's schedule); spots left show
   // only where the provider reports capacity.
@@ -1363,6 +1369,76 @@ function buildFilterGym(row, classes, isToday, nowMs, tz) {
     wrap.appendChild(link);
   }
   return wrap;
+}
+
+// ---- share a gym's name + address ----
+
+const SHARE_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+
+function placeName(g) { return g.name || `${g.brand || ''} ${g.short || ''}`.trim(); }
+
+// Apple Maps URL: iOS hands it to the default maps app; elsewhere it opens
+// the Apple Maps web page.
+function mapsUrl(g) {
+  const qs = new URLSearchParams({ q: placeName(g), address: g.address });
+  return `https://maps.apple.com/?${qs}`;
+}
+
+// "Name, street, city, ST zip" as plain text, so the share sheet offers
+// Tesla / maps / messages and each can parse the address. No URL in the
+// payload: some targets (Tesla) would take the link instead of the address.
+async function shareGym(g, btn) {
+  const text = `${placeName(g)}, ${g.address}`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: placeName(g), text });
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return; // user closed the sheet
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    flashLabel(btn, 'Copied');
+  } catch {
+    window.prompt('Copy this address:', text);
+  }
+}
+
+function flashLabel(btn, text) {
+  if (!btn) return;
+  const prev = btn.getAttribute('data-label');
+  btn.setAttribute('data-label', text);
+  btn.classList.add('is-flashed');
+  window.setTimeout(() => {
+    btn.classList.remove('is-flashed');
+    if (prev == null) btn.removeAttribute('data-label'); else btn.setAttribute('data-label', prev);
+  }, 1600);
+}
+
+function shareButton(g, cls) {
+  const btn = h('button', {
+    class: cls,
+    attrs: { type: 'button', 'aria-label': `Share ${placeName(g)} address` },
+  });
+  btn.innerHTML = SHARE_SVG;
+  btn.addEventListener('click', (e) => { e.stopPropagation(); shareGym(g, btn); });
+  return btn;
+}
+
+function renderPlaceBar(g) {
+  els.placeBar.innerHTML = '';
+  els.placeBar.hidden = !(g && g.address);
+  if (!g || !g.address) return;
+  els.placeBar.appendChild(h('span', { class: 'place__addr', text: g.address }));
+  els.placeBar.appendChild(h('a', {
+    class: 'place__maps',
+    attrs: { href: mapsUrl(g), target: '_blank', rel: 'noopener' },
+    text: 'Maps',
+  }));
+  const share = shareButton(g, 'place__share');
+  share.appendChild(document.createTextNode('Share'));
+  els.placeBar.appendChild(share);
 }
 
 function spotsLabel(c) {
