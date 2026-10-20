@@ -663,6 +663,19 @@ body {
 .band__input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 3px; }
 .band__input:focus-visible::-moz-range-thumb { outline: 2px solid var(--accent); outline-offset: 3px; }
 
+.busy-toggle {
+  display: block;
+  width: calc(100% - 44px);
+  min-height: 44px;
+  margin: 12px 22px 4px;
+  border: 1px solid var(--handle);
+  border-radius: 999px;
+  background: transparent;
+  font: 600 13px var(--body);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
 .time-panel__ticks {
   display: flex;
   justify-content: space-between;
