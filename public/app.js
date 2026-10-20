@@ -1375,7 +1375,11 @@ function buildFilterGym(row, classes, isToday, nowMs, tz) {
 
 const SHARE_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
 
-function placeName(g) { return g.name || `${g.brand || ''} ${g.short || ''}`.trim(); }
+// "Black Swan Yoga Orchard", not "Black Swan Yoga — Orchard": plain words
+// only, in case the em dash is what trips up a share target's name parsing.
+function placeName(g) {
+  return (g.name || `${g.brand || ''} ${g.short || ''}`).replace(/\s*—\s*/g, ' ').trim();
+}
 
 // Apple Maps URL: iOS hands it to the default maps app; elsewhere it opens
 // the Apple Maps web page.
@@ -1384,16 +1388,25 @@ function mapsUrl(g) {
   return `https://maps.apple.com/?${qs}`;
 }
 
+// Google Maps search URL for the place (free Maps URLs scheme, no key).
+// Google Maps' own share is a place link (maps.google.com/?ftid=<feature
+// id>), which shows the name in a Tesla (Drew, 2026-10-20). The ftid/place
+// id needs the paid Places API, so this searches "name, address" instead,
+// which Google resolves to the business.
+function googleMapsUrl(g) {
+  const qs = new URLSearchParams({ api: '1', query: `${placeName(g)}, ${g.address}` });
+  return `https://www.google.com/maps/search/?${qs}`;
+}
+
 // Two share payloads, because the Tesla app's handling can't be tested here:
-//   'text' "Name, street, city, ST zip" as plain text. Confirmed by Drew
-//          2026-10-20: Tesla gets the address but drops the name.
-//   'link' only an Apple Maps place URL (q=name, address=…), the same shape
-//          Apple Maps itself shares, so a target that resolves map links
-//          may keep the place name.
+//   'text' "Name, street, city, ST zip" as plain text. Tesla takes the
+//          address from this; the name was dropped while it held an em dash.
+//   'link' only a Google Maps URL for the place, the kind of link Google
+//          Maps itself shares (an Apple Maps link lost the name in the car).
 async function shareGym(g, btn, mode = 'text') {
   const text = `${placeName(g)}, ${g.address}`;
   const payload = mode === 'link'
-    ? { title: placeName(g), url: mapsUrl(g) }
+    ? { title: placeName(g), url: googleMapsUrl(g) }
     : { title: placeName(g), text };
   if (navigator.share) {
     try {
@@ -1403,7 +1416,7 @@ async function shareGym(g, btn, mode = 'text') {
       if (err && err.name === 'AbortError') return; // user closed the sheet
     }
   }
-  const copy = mode === 'link' ? mapsUrl(g) : text;
+  const copy = mode === 'link' ? googleMapsUrl(g) : text;
   try {
     await navigator.clipboard.writeText(copy);
     flashLabel(btn, 'Copied');
@@ -1446,8 +1459,8 @@ function renderPlaceBar(g) {
   const share = shareButton(g, 'place__share');
   share.appendChild(document.createTextNode('Share'));
   els.placeBar.appendChild(share);
-  const shareLink = shareButton(g, 'place__share', 'link', `Share ${placeName(g)} as a Maps link`);
-  shareLink.appendChild(document.createTextNode('Share (Maps link)'));
+  const shareLink = shareButton(g, 'place__share', 'link', `Share ${placeName(g)} as a Google Maps link`);
+  shareLink.appendChild(document.createTextNode('Share (Google Maps)'));
   els.placeBar.appendChild(shareLink);
 }
 
