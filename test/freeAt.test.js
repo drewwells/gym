@@ -2,7 +2,9 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { summarizeBoardDay } = require('../lib/board');
-const { floorInBand, freeFloorsInBand, SLOT_MIN } = require('../public/free-at');
+const {
+  floorInBand, freeFloorsInBand, SLOT_MIN, BAND_MIN, BAND_MAX, clampBand, shiftBand, growBand,
+} = require('../public/free-at');
 
 // Same fixture shape as board.test.js: a Central-time gym open 6 AM–10 PM.
 const GYM = {
@@ -120,4 +122,51 @@ test('freeFloorsInBand: splits free/busy, busy longest-stretch first, skips clas
   const { free, busy } = freeFloorsInBand(rows, SEVEN_PM, SEVEN_PM + 60);
   assert.deepEqual(free.map((f) => f.row.id), ['free']);
   assert.deepEqual(busy.map((b) => b.row.id), ['half', 'short']);
+});
+
+// The picker runs 8 AM–10 PM (Drew, 2026-10-20: "extend to 10pm").
+const H = (h) => h * 60;
+
+test('band bounds are 8 AM to 10 PM', () => {
+  assert.equal(BAND_MIN, H(8));
+  assert.equal(BAND_MAX, H(22));
+});
+
+test('clampBand: 8–10 PM is allowed as-is; past 10 PM is cut back', () => {
+  assert.deepEqual(clampBand(H(20), H(22)), [H(20), H(22)]);
+  assert.deepEqual(clampBand(H(21), H(23)), [H(21), H(22)]);
+  assert.deepEqual(clampBand(H(22), H(23)), [H(21), H(22)]);
+  assert.deepEqual(clampBand(H(6), H(7)), [H(8), H(9)]);
+});
+
+test('clampBand: keeps an hour; the end that moved wins', () => {
+  assert.deepEqual(clampBand(H(20), H(20.5), 'from'), [H(20), H(21)]);
+  assert.deepEqual(clampBand(H(21.5), H(22), 'to'), [H(21), H(22)]);
+});
+
+test('shiftBand: later stops at 10 PM, earlier at 8 AM, length kept', () => {
+  assert.deepEqual(shiftBand([H(20), H(21.5)], 30), [H(20.5), H(22)]);
+  assert.deepEqual(shiftBand([H(20.5), H(22)], 30), [H(20.5), H(22)]);
+  assert.deepEqual(shiftBand([H(8), H(9)], -30), [H(8), H(9)]);
+});
+
+test('growBand: grows the end up to 10 PM, then the start', () => {
+  assert.deepEqual(growBand([H(19), H(20)], 30), [H(19), H(20.5)]);
+  assert.deepEqual(growBand([H(21), H(22)], 30), [H(20.5), H(22)]);
+  assert.deepEqual(growBand([H(8), H(22)], 30), [H(8), H(22)]);
+});
+
+test('8–10 PM band: a gym closing at 9 PM is trimmed by its hours', () => {
+  const early = { ...GYM, usableWindow: { start: '06:00', end: '21:00' } };
+  const d = dayAt([], early);
+  const r = floorInBand(d.gaps, d.events, H(20), H(22));
+  assert.equal(r.free, true);
+  assert.deepEqual(r.windows, [{ start: H(20), end: H(21) }]);
+  const late = dayAt([], { ...GYM, usableWindow: { start: '06:00', end: '20:30' } });
+  assert.equal(floorInBand(late.gaps, late.events, H(20), H(22)).free, false);
+});
+
+test('8–10 PM band: a 9 PM class leaves the 8–9 hour', () => {
+  const r = at([cls(21, 22, 'Late Zumba')], H(20), H(22));
+  assert.deepEqual(r.windows, [{ start: H(20), end: H(21) }]);
 });

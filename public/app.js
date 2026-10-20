@@ -108,13 +108,14 @@ let classQuery = '';
 let searchOpen = false;       // search mode: strip hidden, Close shown (always true while q is set)
 // Board time band: minutes since local midnight (each gym's own tz), always
 // at least an hour apart. Mirrored in the URL as ?from=HH:MM&to=HH:MM.
-const BAND_MIN = 8 * 60, BAND_MAX = 20 * 60, BAND_DEFAULT = [19 * 60, 20 * 60];
+const { BAND_MIN, BAND_MAX } = FreeAt;
+const BAND_DEFAULT = [19 * 60, 20 * 60];
 const BAND_STEP = 30;
 const BAND_PRESETS = [
   ['Morning', 8 * 60, 11 * 60],
   ['Midday', 11 * 60, 14 * 60],
-  ['Afternoon', 14 * 60, 17 * 60],
-  ['Evening', 17 * 60, 20 * 60],
+  ['Afternoon', 14 * 60, 18 * 60],
+  ['Evening', 18 * 60, 22 * 60],
 ];
 let band = [...BAND_DEFAULT];
 // Gyms with no free hour in the band (and classes-only studios) stay hidden
@@ -197,10 +198,13 @@ async function init() {
   els.bandLater.addEventListener('click', () => shiftBand(BAND_STEP));
   els.bandShorter.addEventListener('click', () => setBand(band[0], band[1] - BAND_STEP));
   els.bandLonger.addEventListener('click', () => {
-    // Grow the end; once it hits 8 PM, grow the start instead.
-    if (band[1] < BAND_MAX) setBand(band[0], band[1] + BAND_STEP);
-    else setBand(band[0] - BAND_STEP, band[1], 'to');
+    const [from, to] = FreeAt.growBand(band, BAND_STEP);
+    setBand(from, to);
   });
+  // The readout picks full or compact text by measuring, so re-measure
+  // once the display font is in and when the width changes.
+  document.fonts?.ready.then(syncTimePicker);
+  window.addEventListener('resize', syncTimePicker);
   attachSwipe();
 
   // 3. Read the URL once, then render.
@@ -227,7 +231,7 @@ function parseLocation() {
   const q = url.searchParams.get('q') || '';
   const from = hhmmToMin(url.searchParams.get('from'));
   const to = hhmmToMin(url.searchParams.get('to'));
-  return { gymId, date, q, band: from !== null && to !== null ? clampBand(from, to) : null };
+  return { gymId, date, q, band: from !== null && to !== null ? FreeAt.clampBand(from, to) : null };
 }
 
 function hhmmToMin(v) {
@@ -320,31 +324,16 @@ function syncClassFilterInput() {
 
 // ---- pick a time ----
 
-// Keep the band in 8 AM–8 PM and at least an hour long; the end that moved
-// (`moved`) wins and pushes the other one along.
-function clampBand(from, to, moved = 'from') {
-  const gap = FreeAt.SLOT_MIN;
-  from = Math.max(BAND_MIN, Math.min(BAND_MAX - gap, from));
-  to = Math.max(BAND_MIN + gap, Math.min(BAND_MAX, to));
-  if (to - from < gap) {
-    if (moved === 'from') to = from + gap;
-    else from = to - gap;
-  }
-  return [from, to];
-}
-
 function setBand(from, to, moved) {
-  band = clampBand(from, to, moved);
+  band = FreeAt.clampBand(from, to, moved);
   syncTimePicker();
   replaceBoardUrl();
   if (view === 'board') renderBoard();
 }
 
-// Earlier / later: slide the whole band, keeping its length.
 function shiftBand(delta) {
-  const len = band[1] - band[0];
-  const from = Math.max(BAND_MIN, Math.min(BAND_MAX - len, band[0] + delta));
-  setBand(from, from + len);
+  const [from, to] = FreeAt.shiftBand(band, delta);
+  setBand(from, to);
 }
 
 function replaceBoardUrl() {
@@ -354,7 +343,11 @@ function replaceBoardUrl() {
 
 function syncTimePicker() {
   const [from, to] = band;
-  els.timeReadout.textContent = fmtSpan(from, to);
+  // Full text unless it would wrap (a noon-crossing band at 320px); then
+  // drop the ":00"s: "11:30 AM – 10 PM".
+  const r = els.timeReadout;
+  r.textContent = fmtSpan(from, to);
+  if (r.scrollWidth > r.clientWidth) r.textContent = fmtSpan(from, to).replace(/:00/g, '');
   for (const btn of els.bandPresets.children) {
     const on = Number(btn.dataset.from) === from && Number(btn.dataset.to) === to;
     btn.classList.toggle('is-active', on);
