@@ -786,6 +786,13 @@ body {
 
 .filter-class__name { min-width: 0; overflow-wrap: anywhere; padding: 6px 0; }
 
+.filter-class__who {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.filter-class.is-past .filter-class__who { color: inherit; }
+
 .filter-class__register {
   font-family: var(--mono);
   font-size: 9.5px;

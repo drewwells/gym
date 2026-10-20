@@ -114,6 +114,17 @@ function deepLink(entry) {
   return CALENDAR_URL;
 }
 
+// Crux only fills `staff` on a few bookings (the Rec Team tryouts); the
+// studio classes carry the instructor in the name instead: "Vinyasa w/ Kirk".
+function instructors(entry) {
+  const staff = (entry.staff || [])
+    .map((s) => `${s.firstName || ''} ${s.lastName || ''}`.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  if (staff.length) return staff;
+  const m = (entry.name || '').match(/\bw\/\s*([^(]+?)\s*(?:\(|$)/i);
+  return m ? [m[1]] : [];
+}
+
 function normalize(entry, gym) {
   const name = entry.name ?? '';
   const room = classifyRoom(name);
@@ -128,7 +139,7 @@ function normalize(entry, gym) {
     room,
     danceSuitable: gym.danceRooms.includes(room),
     category: null,
-    instructors: [],
+    instructors: instructors(entry),
     seatsRemaining: entry.ticketsRemaining ?? null,
     seatsTotal: entry.maxNumOfGuests ?? null,
     deepLink: deepLink(entry),
@@ -152,4 +163,4 @@ async function fetchWeek(gym, startUTC, endUTC) {
   return [...bookings, ...calEvents];
 }
 
-module.exports = { fetchWeek };
+module.exports = { fetchWeek, instructors };

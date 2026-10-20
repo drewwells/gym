@@ -188,6 +188,13 @@ test('dayClasses carries spots left and the class deep link', () => {
   assert.equal(c.deepLink, 'https://x/class/1');
 });
 
+test('dayClasses carries instructors (empty when the provider has none)', () => {
+  const { dayClasses } = require('../lib/board');
+  const [a, b] = dayClasses([{ ...ev('Studio', 9, 10), instructors: ['Diego B.'] }, ev('Studio', 11, 12)], DATE);
+  assert.deepEqual(a.instructors, ['Diego B.']);
+  assert.deepEqual(b.instructors, []);
+});
+
 test('summarizeBoardDay: a classes-only gym (no dance rooms) has classes but no floor', () => {
   const s = summarizeBoardDay(
     [ev('Studio', 9, 10, { danceSuitable: false, name: 'Flow' })],

@@ -102,7 +102,7 @@ let currentGymId = null;      // detail only
 let anchorTz = DEFAULT_TZ;    // tz used to compute "today" for the date strip
 let today = null;             // YYYY-MM-DD in anchorTz, rolls at midnight
 let dayOffset = 0;            // 0 = today, up to STRIP_DAYS-1
-// Board class-name filter, mirrored in the URL as ?q= (board view only).
+// Board class/instructor filter, mirrored in the URL as ?q= (board view only).
 // Kept while drilled into a gym so "back" returns to the same results.
 let classQuery = '';
 let searchOpen = false;       // search mode: strip hidden, Close shown (always true while q is set)
@@ -1325,7 +1325,7 @@ function renderClassFilter(decorated, isToday, nowMs, date) {
     const hits = groupRows
       .map(({ row }) => ({
         row,
-        classes: ((row.day && row.day.allClasses) || []).filter((c) => c.name.toLowerCase().includes(q)),
+        classes: ((row.day && row.day.allClasses) || []).filter((c) => classMatches(c, q)),
       }))
       .filter((x) => x.classes.length);
     if (!hits.length) { missBrands.push(brand); continue; }
@@ -1362,6 +1362,18 @@ function renderClassFilter(decorated, isToday, nowMs, date) {
   }
 }
 
+// A class matches on its name or any instructor's name.
+function classMatches(c, q) {
+  return c.name.toLowerCase().includes(q)
+    || (c.instructors || []).some((i) => i.toLowerCase().includes(q));
+}
+
+// Instructors not already spelled out in the class name ("Vinyasa w/ Kirk").
+function instructorLabel(c) {
+  const name = c.name.toLowerCase();
+  return (c.instructors || []).filter((i) => !name.includes(i.toLowerCase())).join(', ');
+}
+
 function buildFilterGym(row, classes, isToday, nowMs, tz) {
   const rowTz = row.tz || tz;
   const wrap = h('div', { class: 'filter-gym' });
@@ -1385,6 +1397,7 @@ function buildFilterGym(row, classes, isToday, nowMs, tz) {
   for (const c of classes) {
     const past = isToday && new Date(c.endDT).getTime() <= nowMs;
     const spots = spotsLabel(c);
+    const who = instructorLabel(c);
     const link = h('a', {
       class: `filter-class${past ? ' is-past' : ''}`,
       attrs: {
@@ -1393,13 +1406,17 @@ function buildFilterGym(row, classes, isToday, nowMs, tz) {
         rel: 'noopener',
         'aria-label': [
           `${c.name}, ${fmt12LongIso(c.startDT, rowTz)} to ${fmt12LongIso(c.endDT, rowTz)}`,
+          who && `with ${who}`,
           spots && spots.text,
           row.requiresRegistration ? 'registration required' : '',
         ].filter(Boolean).join(', '),
       },
     },
       h('span', { class: 'filter-class__time', text: fmt12Iso(c.startDT, rowTz) }),
-      h('span', { class: 'filter-class__name', text: c.name }),
+      h('span', { class: 'filter-class__name' },
+        c.name,
+        who ? h('span', { class: 'filter-class__who', text: who }) : null,
+      ),
       row.requiresRegistration
         ? h('span', { class: 'filter-class__register', text: 'Register' })
         : h('span', {}),
