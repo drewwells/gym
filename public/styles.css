@@ -959,27 +959,30 @@ body {
 /* ---- detail: address + Maps / Share ---- */
 .place {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px 6px 22px;
+  gap: 0 4px;
+  padding: 8px 12px 2px 22px;
   border-top: 1px solid var(--divider);
 }
 
 .place[hidden] { display: none; }
 
 .place__addr {
-  flex: 1 1 auto;
+  flex: 1 1 100%; /* own line; Maps / Share / Share (Maps link) wrap below */
   min-width: 0;
   font-size: 13px;
   line-height: 1.3;
   color: var(--ink-soft);
 }
 
+.place__maps { margin-left: -8px; }
+
 .place__maps,
 .place__share {
   flex: 0 0 auto;
   min-height: 44px;
-  padding: 0 10px;
+  padding: 0 8px;
   border: 0;
   border-radius: 10px;
   background: transparent;
