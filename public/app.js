@@ -451,7 +451,17 @@ function renderBoard() {
   }
 
   els.boardHero.innerHTML = '';
-  els.boardHero.appendChild(buildBoardHero(heroRows, isToday, nowMs, heroTz, date, scopeBrandName()));
+  if (myBrands.size > 0 && !heroRows.length && decorated.some((r) => myBrands.has(r.row.brand))) {
+    // Only classes-only brands pinned: there is no floor to count, so say
+    // that instead of a misleading "0 floors open".
+    els.boardHero.appendChild(hero(
+      isToday ? `Right now · ${fmt12Long(nowMinutesInTz(heroTz))}` : `${dateParts(date).dowLong} · ${dateParts(date).month} ${dateParts(date).dom}`,
+      heroHead('No open ', accent('floors')),
+      sub('Your pinned studios are classes only — tap the search icon to find a class.'),
+    ));
+  } else {
+    els.boardHero.appendChild(buildBoardHero(heroRows, isToday, nowMs, heroTz, date, scopeBrandName()));
+  }
 
   // Brand-grouped accordion.
   els.boardList.innerHTML = '';
