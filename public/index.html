@@ -43,18 +43,23 @@
              class-only view (matching classes under each gym, board order). -->
         <nav id="boardBar" class="board-bar" aria-label="Day and class search">
           <div id="boardStripSlot"></div>
-          <!-- Pick a time (Drew, 2026-10-20): the list shows floors free for
-               a full hour from the chosen day + time, redrawn on every slider
-               step or day tap. Default today 7 PM; ?at=HH:MM in the URL. -->
-          <div id="timePanel" class="time-panel" hidden>
+          <!-- Time band (Drew, 2026-10-20): two handles, 8 AM–8 PM in
+               15-minute steps, at least an hour apart. The list shows floors
+               with an hour free inside the band, redrawn on every handle
+               move or day tap. Default today 7–8 PM; ?from=&to= in the URL. -->
+          <div id="timePanel" class="time-panel">
             <div class="time-panel__head">
-              <output id="timeReadout" class="time-panel__readout" for="timeSlider"></output>
-              <button id="timeNow" class="time-panel__btn" type="button">Now</button>
-              <button id="timeDone" class="time-panel__btn time-panel__btn--primary" type="button">Done</button>
+              <output id="timeReadout" class="time-panel__readout" for="bandFrom bandTo"></output>
+              <button id="timeNow" class="time-panel__btn" type="button">Next hour</button>
             </div>
-            <label for="timeSlider" class="visually-hidden">Time of day</label>
-            <input id="timeSlider" class="time-panel__slider" type="range" min="360" max="1320" step="15" value="1140">
-            <div class="time-panel__ticks" aria-hidden="true"><span>6a</span><span>9a</span><span>12p</span><span>3p</span><span>6p</span><span>10p</span></div>
+            <div class="band">
+              <div class="band__track" aria-hidden="true"><div id="bandFill" class="band__fill"></div></div>
+              <label for="bandFrom" class="visually-hidden">From</label>
+              <input id="bandFrom" class="band__input" type="range" min="480" max="1200" step="15" value="1140">
+              <label for="bandTo" class="visually-hidden">To</label>
+              <input id="bandTo" class="band__input" type="range" min="480" max="1200" step="15" value="1200">
+            </div>
+            <div class="time-panel__ticks" aria-hidden="true"><span>8a</span><span>10a</span><span>12p</span><span>2p</span><span>4p</span><span>6p</span><span>8p</span></div>
           </div>
           <div id="classFilterBar" class="class-filter">
             <div class="class-filter__box">
@@ -63,10 +68,6 @@
               <input id="classFilter" class="class-filter__input" type="search" placeholder="Find a class" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
             </div>
             <button id="classFilterClose" class="class-filter__close" type="button" hidden>Close</button>
-            <button id="timeBtn" class="time-btn" type="button" aria-controls="timePanel" aria-expanded="false">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-              <span id="timeBtnLabel">7 PM</span>
-            </button>
           </div>
         </nav>
       </div>
