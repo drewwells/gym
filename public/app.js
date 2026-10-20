@@ -109,6 +109,9 @@ let searchOpen = false;       // search mode: strip hidden, Close shown (always 
 // at least an hour apart. Mirrored in the URL as ?from=HH:MM&to=HH:MM.
 const BAND_MIN = 8 * 60, BAND_MAX = 20 * 60, BAND_DEFAULT = [19 * 60, 20 * 60];
 let band = [...BAND_DEFAULT];
+// Gyms with no free hour in the band (and classes-only studios) stay hidden
+// behind a "Show N more" toggle (Drew, 2026-10-20). Session-only.
+let showBusy = false;
 
 const dayCache = new Map();   // `${gymId}:${date}` -> parsed day | { error }
 const dayInflight = new Map();
@@ -624,7 +627,7 @@ function buildBrandGroupHeader(brand, groupRows, metaText) {
 function buildGymRow(row, st, tz) {
   // Each row's absolute times (open/close, "opens", "first window") must be
   // formatted in THAT gym's timezone — not the board's anchor tz — or an
-  // Eastern gym (e.g. the Knoxville Gold's) renders an hour early on the
+  // gym in another timezone renders an hour off on the
   // summary while its detail page (which already uses g.tz) reads correctly.
   const rowTz = row.tz || tz;
   const isOpen = st.kind === 'open';
@@ -753,24 +756,39 @@ function renderFreeInBand(decorated, date) {
     `${p.dowLong} ${p.month} ${p.dom} · ${fmtSpan(from, to)}`,
     heroHead(accent(String(nFree)), nFree === 1 ? ' floor free' : ' floors free'),
     sub(nFree
-      ? `${scopeName ? `${scopeName}: ` : ''}an hour or more free in this window. Local time at each gym.`
+      ? `${scopeName ? `${scopeName}: ` : ''}an hour or more free in this window.`
       : 'No floor has a free hour in this window. Try widening it.'),
   ));
 
   els.boardList.innerHTML = '';
+  let hidden = 0;
   for (const brand of brandOrder) {
     const groupRows = decorated.filter((r) => r.row.brand === brand);
     if (!groupRows.length) continue;
     const inBand = groupRows.map((r) => result.get(r.row.id)).filter(Boolean);
-    const nBrandFree = inBand.filter((x) => x.free).length;
-    els.boardList.appendChild(buildBrandGroupHeader(brand, groupRows, `${nBrandFree} of ${inBand.length} free`));
+    const freeRows = inBand.filter((x) => x.free);
+    const others = groupRows.length - freeRows.length;
+    if (!showBusy) hidden += others;
+    // A brand with nothing free disappears entirely until "Show" is on.
+    if (!showBusy && !freeRows.length) continue;
+    els.boardList.appendChild(buildBrandGroupHeader(brand, groupRows, `${freeRows.length} of ${inBand.length} free`));
     if (brandCollapsed.has(brand)) continue;
-    const ordered = [...inBand.filter((x) => x.free), ...inBand.filter((x) => !x.free)];
-    for (const x of ordered) els.boardList.appendChild(bandRow(x));
+    for (const x of freeRows) els.boardList.appendChild(bandRow(x));
+    if (!showBusy) continue;
+    for (const x of inBand.filter((y) => !y.free)) els.boardList.appendChild(bandRow(x));
     // Classes-only studios and not-yet-open gyms keep their usual rows.
     for (const { row, st } of groupRows) {
       if (!result.has(row.id)) els.boardList.appendChild(buildGymRow(row, st, anchorTz));
     }
+  }
+  if (showBusy || hidden) {
+    const toggle = h('button', {
+      class: 'busy-toggle',
+      attrs: { type: 'button', 'aria-pressed': String(showBusy) },
+      text: showBusy ? 'Hide gyms without a free hour' : `Show ${hidden} more ${hidden === 1 ? 'gym' : 'gyms'} (busy or classes only)`,
+    });
+    toggle.addEventListener('click', () => { showBusy = !showBusy; renderBoard(); });
+    els.boardList.appendChild(toggle);
   }
 }
 
@@ -779,7 +797,7 @@ function bandRow(x) {
     const total = x.windows.reduce((n, w) => n + (w.end - w.start), 0);
     return freeAtRow(x.row, {
       open: true,
-      status: `Free ${x.windows.map((w) => fmtSpan(w.start, w.end)).join(', ')}${tzTag(x.row)}`,
+      status: `Free ${x.windows.map((w) => fmtSpan(w.start, w.end)).join(', ')}`,
       num: durStr(total), label: 'free',
     });
   }
@@ -817,14 +835,6 @@ function freeAtRow(row, { open, status, num, label }) {
 function fmtSpan(a, b) {
   const A = fmt12Long(a), B = fmt12Long(b);
   return A.slice(-2) === B.slice(-2) ? `${A.slice(0, -3)} – ${B}` : `${A} – ${B}`;
-}
-
-// " ET" for a gym whose clock differs from the board's (e.g. Knoxville).
-function tzTag(row) {
-  if (!row.tz || row.tz === anchorTz) return '';
-  const name = new Intl.DateTimeFormat('en-US', { timeZone: row.tz, timeZoneName: 'short' })
-    .formatToParts(new Date()).find((x) => x.type === 'timeZoneName');
-  return name ? ` ${name.value.replace(/^([A-Z])[SD]T$/, '$1T')}` : '';
 }
 
 function boardMessageHero(headText, eyebrowText) {
