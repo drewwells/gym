@@ -1335,7 +1335,7 @@ function buildFilterGym(row, classes, isToday, nowMs, tz) {
     navigate({ gymId: row.id, date: d });
   });
   if (row.address) {
-    wrap.appendChild(h('div', { class: 'filter-gym__head' }, head, shareButton(row, 'filter-gym__share')));
+    wrap.appendChild(h('div', { class: 'filter-gym__head' }, head, gymShareButton(row, 'filter-gym__share')));
   } else {
     wrap.appendChild(head);
   }
@@ -1452,14 +1452,17 @@ function renderPlaceBar(g) {
     attrs: { href: mapsUrl(g), target: '_blank', rel: 'noopener' },
     text: 'Maps',
   }));
-  const share = shareButton(g, 'place__share');
-  share.appendChild(document.createTextNode('Share'));
-  els.placeBar.appendChild(share);
-  if (g.mapsFtid) {
-    const shareLink = shareButton(g, 'place__share', 'link', `Share ${placeName(g)} as a Google Maps link`);
-    shareLink.appendChild(document.createTextNode('Share (Google Maps)'));
-    els.placeBar.appendChild(shareLink);
-  }
+  els.placeBar.appendChild(gymShareButton(g, 'place__share'));
+}
+
+// Icon-only share. Sends the Google Maps place link (name + address reach
+// a Tesla); plain text only for a gym without a feature id.
+function gymShareButton(g, cls) {
+  const btn = g.mapsFtid
+    ? shareButton(g, cls, 'link', `Share ${placeName(g)} (Google Maps link)`)
+    : shareButton(g, cls);
+  btn.title = 'Share';
+  return btn;
 }
 
 function spotsLabel(c) {
