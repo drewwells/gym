@@ -1384,24 +1384,31 @@ function mapsUrl(g) {
   return `https://maps.apple.com/?${qs}`;
 }
 
-// "Name, street, city, ST zip" as plain text, so the share sheet offers
-// Tesla / maps / messages and each can parse the address. No URL in the
-// payload: some targets (Tesla) would take the link instead of the address.
-async function shareGym(g, btn) {
+// Two share payloads, because the Tesla app's handling can't be tested here:
+//   'text' "Name, street, city, ST zip" as plain text. Confirmed by Drew
+//          2026-10-20: Tesla gets the address but drops the name.
+//   'link' only an Apple Maps place URL (q=name, address=…), the same shape
+//          Apple Maps itself shares, so a target that resolves map links
+//          may keep the place name.
+async function shareGym(g, btn, mode = 'text') {
   const text = `${placeName(g)}, ${g.address}`;
+  const payload = mode === 'link'
+    ? { title: placeName(g), url: mapsUrl(g) }
+    : { title: placeName(g), text };
   if (navigator.share) {
     try {
-      await navigator.share({ title: placeName(g), text });
+      await navigator.share(payload);
       return;
     } catch (err) {
       if (err && err.name === 'AbortError') return; // user closed the sheet
     }
   }
+  const copy = mode === 'link' ? mapsUrl(g) : text;
   try {
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(copy);
     flashLabel(btn, 'Copied');
   } catch {
-    window.prompt('Copy this address:', text);
+    window.prompt('Copy this:', copy);
   }
 }
 
@@ -1416,13 +1423,13 @@ function flashLabel(btn, text) {
   }, 1600);
 }
 
-function shareButton(g, cls) {
+function shareButton(g, cls, mode = 'text', label = `Share ${placeName(g)} address`) {
   const btn = h('button', {
     class: cls,
-    attrs: { type: 'button', 'aria-label': `Share ${placeName(g)} address` },
+    attrs: { type: 'button', 'aria-label': label },
   });
   btn.innerHTML = SHARE_SVG;
-  btn.addEventListener('click', (e) => { e.stopPropagation(); shareGym(g, btn); });
+  btn.addEventListener('click', (e) => { e.stopPropagation(); shareGym(g, btn, mode); });
   return btn;
 }
 
@@ -1439,6 +1446,9 @@ function renderPlaceBar(g) {
   const share = shareButton(g, 'place__share');
   share.appendChild(document.createTextNode('Share'));
   els.placeBar.appendChild(share);
+  const shareLink = shareButton(g, 'place__share', 'link', `Share ${placeName(g)} as a Maps link`);
+  shareLink.appendChild(document.createTextNode('Share (Maps link)'));
+  els.placeBar.appendChild(shareLink);
 }
 
 function spotsLabel(c) {
