@@ -101,6 +101,18 @@ const HOURS_CRUX = {
   fri: { open: '06:00', close: '23:00' },
   sat: { open: '10:00', close: '22:00' },
 };
+const HOURS_LIFETIME = {
+  // Life Time Austin Arboretum, per the location page's JSON-LD
+  // openingHoursSpecification (verified 2026-08-18): Mon-Fri 5a-10p,
+  // Sat-Sun 6a-7p.
+  sun: { open: '06:00', close: '19:00' },
+  mon: { open: '05:00', close: '22:00' },
+  tue: { open: '05:00', close: '22:00' },
+  wed: { open: '05:00', close: '22:00' },
+  thu: { open: '05:00', close: '22:00' },
+  fri: { open: '05:00', close: '22:00' },
+  sat: { open: '06:00', close: '19:00' },
+};
 
 const GYMS = [
   {
@@ -530,6 +542,38 @@ const GYMS = [
     sourceUrl: 'https://www.goldsgym.com/locations/tn/chapman/',
   },
 
+  // --- Life Time (new platform, added 2026-08-18) -----------------------
+  // Life Time is a new brand: a clean JSON schedule API (see providers/lifetime.js
+  // for the endpoint, key/club-id provenance, and quirks). Unlike Gold's/Crunch
+  // it exposes NO room field, so the provider infers the room from the class
+  // `tags` (first tag = interest category). The shared group-fitness wood floor
+  // is the danceable "Group Fitness Studio"; Cycle/Pilates/Barre/Yoga/ARORA +
+  // Aqua route to their own non-dance rooms, outdoor classes to "Outdoors", and
+  // an unrecognized class defaults to the studio (conservative — it blocks the
+  // floor rather than falsely freeing it).
+  {
+    id: 'lifetime-austin-arboretum',
+    name: 'Life Time — Austin Arboretum',
+    brand: 'Life Time',
+    short: 'Arboretum',
+    neighborhood: 'Northwest Austin',
+    room: 'Group Fitness Studio',
+    sourceHost: 'lifetime.life',
+    provider: 'lifetime',
+    status: 'live',
+    tz: 'America/Chicago',
+    // `clubId` is the location page's window.lt.club.mmsClubId (287 for
+    // Arboretum). The provider holds the public APIM key.
+    providerConfig: { clubId: 287 },
+    // Only the shared group-fitness wood floor is dance-suitable; the provider
+    // routes every other room (Cycle/Pilates/Barre/Yoga/ARORA + Aqua/Outdoors)
+    // away from it.
+    danceRooms: ['Group Fitness Studio'],
+    usableWindow: DEFAULT_USABLE_WINDOW,
+    hoursByDay: HOURS_LIFETIME,
+    minGapMinutes: DEFAULT_MIN_GAP,
+    sourceUrl: 'https://www.lifetime.life/locations/tx/austin-arboretum.html',
+  },
   // --- Black Swan Yoga (new platform, added 2026-10-20) -----------------
   // Donation-based hot-yoga studios on Mindbody (see providers/blackswan.js
   // for the widget endpoint). No dance floor and no published hours, so
