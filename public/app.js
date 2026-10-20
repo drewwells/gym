@@ -177,6 +177,7 @@ async function init() {
     if (e.key === 'Escape' && !els.sheet.hidden) closePicker();
   });
   window.addEventListener('popstate', () => route({ push: false }));
+  fitVisualViewport();
   els.classFilter.addEventListener('input', () => setClassQuery(els.classFilter.value));
   els.classFilterClose.addEventListener('click', closeSearch);
   els.classFilter.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSearch(); });
@@ -320,6 +321,29 @@ function syncClassFilterInput() {
   if (els.classFilter.value !== classQuery) els.classFilter.value = classQuery;
   els.boardBar.classList.toggle('is-searching', searchOpen);
   els.classFilterClose.hidden = !searchOpen;
+}
+
+// iOS Safari doesn't shrink the layout viewport (or 100dvh) when the
+// keyboard opens; it scrolls the page under the keyboard instead, which
+// pushed the search results off the top and left a blank band. Pin the
+// stage to the visual viewport so the bar sits on the keyboard and the
+// list fills exactly what's visible. Skipped while pinch-zoomed.
+function fitVisualViewport() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const root = document.documentElement;
+  const fit = () => {
+    if (Math.abs(vv.scale - 1) > 0.01) {
+      root.style.removeProperty('--vv-height');
+      root.style.removeProperty('--vv-top');
+      return;
+    }
+    root.style.setProperty('--vv-height', `${vv.height}px`);
+    root.style.setProperty('--vv-top', `${vv.offsetTop}px`);
+  };
+  vv.addEventListener('resize', fit);
+  vv.addEventListener('scroll', fit);
+  fit();
 }
 
 // ---- pick a time ----
@@ -485,6 +509,10 @@ function syncDayStrip() {
 // ---- board view (brand directory) ----
 
 function renderBoard() {
+  if (classQuery.trim()) {
+    renderClassFilter();
+    return;
+  }
   const date = addDays(today, dayOffset);
   const rec = boardCache.get(date);
   const isToday = dayOffset === 0;
@@ -507,10 +535,6 @@ function renderBoard() {
   // [brand, short, id] order (lib/board.js sortBoardRows). Classes-only
   // studios and the search results still use the typed status.
   const decorated = rec.rows.map((row) => ({ row, st: gymStatus(row, nowMs, isToday) }));
-  if (classQuery.trim()) {
-    renderClassFilter(decorated, isToday, nowMs, date);
-    return;
-  }
   renderFreeInBand(decorated, date);
 }
 
@@ -955,12 +979,12 @@ function ensureBoardLoaded(offset) {
     .then((data) => {
       boardCache.set(date, { date, rows: data.gyms });
       boardInflight.delete(date);
-      if (view === 'board' && addDays(today, dayOffset) === date) renderBoard();
+      if (view === 'board' && (classQuery.trim() || addDays(today, dayOffset) === date)) renderBoard();
     })
     .catch((err) => {
       boardCache.set(date, { date, error: err.message });
       boardInflight.delete(date);
-      if (view === 'board' && addDays(today, dayOffset) === date) renderBoard();
+      if (view === 'board' && (classQuery.trim() || addDays(today, dayOffset) === date)) renderBoard();
     });
   boardInflight.set(date, p);
   return p;
@@ -1311,55 +1335,83 @@ function buildClassesOnlyPanel(panel, day, isToday, nowMin) {
 // gym. Brands and gyms keep exactly the order the board would show them in
 // (pinned brands first; within a brand, the same status sort), and brands
 // with no match collapse into one dimmed line at the bottom.
-function renderClassFilter(decorated, isToday, nowMs, date) {
+// Search covers every strip day the board has loaded (today + 6, the
+// server's week cache), under a header per day; within a day, gyms keep
+// board order. Days still loading or failed are named in the footer.
+function renderClassFilter() {
   const q = classQuery.trim().toLowerCase();
   const tz = anchorTz;
+  const nowMs = Date.now();
   const blocks = [];
-  const missBrands = [];
+  const hitBrands = new Set();
+  const pending = [];
   let nClasses = 0;
-  let nGyms = 0;
-  for (const brand of brandOrder) {
-    const groupRows = decorated.filter((r) => r.row.brand === brand && r.row.status === 'live');
-    if (!groupRows.length) continue;
-    groupRows.sort((a, b) => statusRank(a.st) - statusRank(b.st) || statusTiebreak(a.st, b.st));
-    const hits = groupRows
-      .map(({ row }) => ({
-        row,
-        classes: ((row.day && row.day.allClasses) || []).filter((c) => classMatches(c, q)),
-      }))
-      .filter((x) => x.classes.length);
-    if (!hits.length) { missBrands.push(brand); continue; }
-    const block = h('div', { class: 'filter-brand', attrs: { role: 'listitem' } },
-      h('div', { class: 'filter-brand__head' },
-        h('span', { class: 'gym-row__swatch filter-brand__swatch', attrs: { 'aria-hidden': 'true' }, text: brandMark(brand) }),
-        h('span', { class: 'filter-brand__name', text: brand }),
-      ),
-    );
-    for (const { row, classes } of hits) {
-      nGyms++;
-      nClasses += classes.length;
-      block.appendChild(buildFilterGym(row, classes, isToday, nowMs, tz));
+  let nDays = 0;
+  for (let offset = 0; offset < STRIP_DAYS; offset++) {
+    const date = addDays(today, offset);
+    const rec = boardCache.get(date);
+    if (!rec || rec.error) { pending.push(dayLabel(date, offset)); continue; }
+    const isToday = offset === 0;
+    const decorated = rec.rows.map((row) => ({ row, st: gymStatus(row, nowMs, isToday) }));
+    const dayBlocks = [];
+    for (const brand of brandOrder) {
+      const groupRows = decorated.filter((r) => r.row.brand === brand && r.row.status === 'live');
+      if (!groupRows.length) continue;
+      groupRows.sort((a, b) => statusRank(a.st) - statusRank(b.st) || statusTiebreak(a.st, b.st));
+      const hits = groupRows
+        .map(({ row }) => ({
+          row,
+          classes: ((row.day && row.day.allClasses) || []).filter((c) => classMatches(c, q)),
+        }))
+        .filter((x) => x.classes.length);
+      if (!hits.length) continue;
+      hitBrands.add(brand);
+      const block = h('div', { class: 'filter-brand', attrs: { role: 'listitem' } },
+        h('div', { class: 'filter-brand__head' },
+          h('span', { class: 'gym-row__swatch filter-brand__swatch', attrs: { 'aria-hidden': 'true' }, text: brandMark(brand) }),
+          h('span', { class: 'filter-brand__name', text: brand }),
+        ),
+      );
+      for (const { row, classes } of hits) {
+        nClasses += classes.length;
+        block.appendChild(buildFilterGym(row, classes, isToday, nowMs, tz, offset));
+      }
+      dayBlocks.push(block);
     }
-    blocks.push(block);
+    if (!dayBlocks.length) continue;
+    nDays++;
+    blocks.push(h('h2', { class: 'filter-day', attrs: { role: 'listitem' }, text: dayLabel(date, offset) }), ...dayBlocks);
   }
 
-  const p = dateParts(date);
+  const searched = STRIP_DAYS - pending.length;
   els.boardHero.innerHTML = '';
   els.boardHero.appendChild(h('p', {
     class: 'filter-summary',
     attrs: { role: 'status' },
     text: nClasses
-      ? `${nClasses} ${nClasses === 1 ? 'class' : 'classes'} at ${nGyms} ${nGyms === 1 ? 'gym' : 'gyms'} · ${p.dowLong} ${p.month} ${p.dom}`
-      : `No classes match “${classQuery.trim()}” on ${p.dowLong} ${p.month} ${p.dom}`,
+      ? `${nClasses} ${nClasses === 1 ? 'class' : 'classes'} on ${nDays} ${nDays === 1 ? 'day' : 'days'} · next ${searched} days`
+      : searched
+        ? `No classes match “${classQuery.trim()}” in the next ${searched} days`
+        : 'Reading every floor',
   }));
 
   els.boardList.innerHTML = '';
   for (const b of blocks) els.boardList.appendChild(b);
-  if (missBrands.length && nClasses) {
-    els.boardList.appendChild(h('div', {
-      class: 'filter-miss', attrs: { role: 'listitem' }, text: `No matches at ${missBrands.join(', ')}`,
-    }));
+  const notes = [];
+  const missBrands = brandOrder.filter((b) => !hitBrands.has(b));
+  if (missBrands.length && nClasses) notes.push(`No matches at ${missBrands.join(', ')}`);
+  if (pending.length && searched) notes.push(`Still loading ${pending.join(', ')}`);
+  for (const text of notes) {
+    els.boardList.appendChild(h('div', { class: 'filter-miss', attrs: { role: 'listitem' }, text }));
   }
+}
+
+// "Today", "Tomorrow", then "Thu Oct 22".
+function dayLabel(date, offset) {
+  if (offset === 0) return 'Today';
+  if (offset === 1) return 'Tomorrow';
+  const p = dateParts(date);
+  return `${p.dowLong.slice(0, 3)} ${p.month} ${p.dom}`;
 }
 
 // A class matches on its name or any instructor's name.
@@ -1374,7 +1426,7 @@ function instructorLabel(c) {
   return (c.instructors || []).filter((i) => !name.includes(i.toLowerCase())).join(', ');
 }
 
-function buildFilterGym(row, classes, isToday, nowMs, tz) {
+function buildFilterGym(row, classes, isToday, nowMs, tz, offset) {
   const rowTz = row.tz || tz;
   const wrap = h('div', { class: 'filter-gym' });
   const head = h('button', {
@@ -1383,8 +1435,7 @@ function buildFilterGym(row, classes, isToday, nowMs, tz) {
     text: row.short || row.name || '',
   });
   head.addEventListener('click', () => {
-    const d = dayOffset === 0 ? null : addDays(today, dayOffset);
-    navigate({ gymId: row.id, date: d });
+    navigate({ gymId: row.id, date: offset === 0 ? null : addDays(today, offset) });
   });
   if (row.address) {
     wrap.appendChild(h('div', { class: 'filter-gym__head' }, head, gymShareButton(row, 'filter-gym__share')));
