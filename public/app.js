@@ -125,7 +125,14 @@ let showBusy = false;
 const dayCache = new Map();   // `${gymId}:${date}` -> parsed day | { error }
 const dayInflight = new Map();
 const boardCache = new Map(); // date -> { date, rows: parsed[] } | { error, date }
-const boardInflight = new Map();
+// Live gym ids the current /api/board/week stream hasn't delivered yet. While
+// non-empty the board renders what it has and says how many are still coming.
+const boardPending = new Set();
+let boardWeekInflight = null;
+let boardWeekLoaded = null;   // `today` the last complete stream was for
+// The last complete week, saved so the next open paints instantly from it
+// while the stream refreshes in the background.
+const BOARD_SAVE_KEY = 'openFloor.boardWeek.v1';
 
 // Brand-directory state. `myBrands` is the user's pinned set (persisted —
 // 0..N brands); `brandCollapsed` tracks which groups are currently folded
@@ -422,7 +429,11 @@ function renderShell() {
 }
 
 function prefetchBoardWeek() {
-  for (let i = 0; i < STRIP_DAYS; i++) ensureBoardLoaded(i);
+  // One stream covers all 7 strip days (one upstream fetch per gym, server
+  // cached). The saved copy paints first so the board is never blank.
+  seedBoardFromSaved();
+  queueBoardRender();
+  loadBoardWeek();
 }
 
 function prefetchDetailWeek() {
@@ -517,7 +528,10 @@ function renderBoard() {
   const rec = boardCache.get(date);
   const isToday = dayOffset === 0;
 
-  if (!rec) {
+  // Nothing to show until the first live gym streams in (coming-soon rows
+  // arrive first but carry no schedule).
+  const hasLive = rec && rec.rows && rec.rows.some((r) => r.status === 'live');
+  if (!rec || (!rec.error && !hasLive && boardPending.size)) {
     els.boardHero.innerHTML = '';
     els.boardHero.appendChild(boardMessageHero('Reading every floor', 'One sec'));
     els.boardList.innerHTML = '';
@@ -825,6 +839,7 @@ function renderFreeInBand(decorated, date) {
       if (!result.has(row.id)) els.boardList.appendChild(buildGymRow(row, st, anchorTz));
     }
   }
+  appendPendingNote();
   if (showBusy || hidden) {
     const toggle = h('button', {
       class: 'busy-toggle',
@@ -970,23 +985,110 @@ function orderBrandsPinnedFirst(brands, pinned) {
 
 // ---- board data loading ----
 
-function ensureBoardLoaded(offset) {
-  const date = addDays(today, offset);
-  if (boardCache.has(date) && !boardCache.get(date).error) return;
-  if (boardInflight.has(date)) return boardInflight.get(date);
-  const p = fetch(`/api/board?date=${date}`)
-    .then((res) => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
-    .then((data) => {
-      boardCache.set(date, { date, rows: data.gyms });
-      boardInflight.delete(date);
-      if (view === 'board' && (classQuery.trim() || addDays(today, dayOffset) === date)) renderBoard();
-    })
+function ensureBoardLoaded(_offset) {
+  return loadBoardWeek();
+}
+
+// Board rows for a date in registry order, replacing any row with the same id.
+function upsertBoardRow(date, row) {
+  const rec = boardCache.get(date);
+  const rows = rec && rec.rows ? rec.rows.filter((r) => r.id !== row.id) : [];
+  rows.push(row);
+  rows.sort((a, b) => gymOrder.indexOf(a.id) - gymOrder.indexOf(b.id));
+  boardCache.set(date, { date, rows });
+}
+
+// Coalesce the burst of per-gym stream lines into one render per frame.
+let boardRenderQueued = false;
+function queueBoardRender() {
+  if (boardRenderQueued) return;
+  boardRenderQueued = true;
+  requestAnimationFrame(() => {
+    boardRenderQueued = false;
+    if (view === 'board') renderBoard();
+  });
+}
+
+// Paint from the saved copy of the last complete week: every saved date
+// still inside the strip, minus gyms no longer in the registry.
+function seedBoardFromSaved() {
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem(BOARD_SAVE_KEY) || 'null'); } catch (_e) { return; }
+  if (!saved || !saved.days) return;
+  for (let i = 0; i < STRIP_DAYS; i++) {
+    const date = addDays(today, i);
+    const rows = saved.days[date];
+    if (!rows || boardCache.has(date)) continue;
+    boardCache.set(date, { date, rows: rows.filter((r) => gyms.has(r.id)), saved: true });
+  }
+}
+
+function saveBoardWeek() {
+  const days = {};
+  for (let i = 0; i < STRIP_DAYS; i++) {
+    const date = addDays(today, i);
+    const rec = boardCache.get(date);
+    if (rec && rec.rows) days[date] = rec.rows;
+  }
+  try { localStorage.setItem(BOARD_SAVE_KEY, JSON.stringify({ start: today, days })); } catch (_e) { /* quota: skip */ }
+}
+
+// One streamed request for the whole 7-day strip (NDJSON, see server.js
+// /api/board/week). Each gym's line lands in boardCache as it arrives and the
+// board re-renders, so the fast gyms show while a slow one is still loading.
+function loadBoardWeek() {
+  if (boardWeekInflight) return boardWeekInflight;
+  if (boardWeekLoaded === today) return Promise.resolve();
+  const start = today;
+  const p = (async () => {
+    const res = await fetch(`/api/board/week?start=${start}`);
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let done = false;
+    const handle = (line) => {
+      if (!line.trim()) return;
+      const msg = JSON.parse(line);
+      if (msg.type === 'start') {
+        boardPending.clear();
+        for (const id of msg.pending) if (gyms.has(id)) boardPending.add(id);
+      } else if (msg.type === 'gym') {
+        for (const [date, row] of Object.entries(msg.days)) upsertBoardRow(date, row);
+        boardPending.delete(msg.id);
+        queueBoardRender();
+      } else if (msg.type === 'done') {
+        done = true;
+      }
+    };
+    for (;;) {
+      const { value, done: eof } = await reader.read();
+      if (eof) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        handle(buf.slice(0, nl));
+        buf = buf.slice(nl + 1);
+      }
+    }
+    handle(buf);
+    if (!done) throw new Error('board stream ended early');
+    if (start === today) { boardWeekLoaded = start; saveBoardWeek(); }
+  })()
     .catch((err) => {
-      boardCache.set(date, { date, error: err.message });
-      boardInflight.delete(date);
-      if (view === 'board' && (classQuery.trim() || addDays(today, dayOffset) === date)) renderBoard();
+      // Keep whatever rows arrived (or the saved copy); only a date with
+      // nothing at all shows the error.
+      for (let i = 0; i < STRIP_DAYS; i++) {
+        const date = addDays(today, i);
+        if (!boardCache.has(date)) boardCache.set(date, { date, error: err.message });
+      }
+    })
+    .finally(() => {
+      boardPending.clear();
+      boardWeekInflight = null;
+      queueBoardRender();
     });
-  boardInflight.set(date, p);
+  boardWeekInflight = p;
   return p;
 }
 
@@ -1401,9 +1503,26 @@ function renderClassFilter() {
   const missBrands = brandOrder.filter((b) => !hitBrands.has(b));
   if (missBrands.length && nClasses) notes.push(`No matches at ${missBrands.join(', ')}`);
   if (pending.length && searched) notes.push(`Still loading ${pending.join(', ')}`);
+  const waiting = pendingGymNote();
+  if (waiting) notes.push(waiting);
   for (const text of notes) {
     els.boardList.appendChild(h('div', { class: 'filter-miss', attrs: { role: 'listitem' }, text }));
   }
+}
+
+// "Still loading 2 gyms: Crunch Round Rock, …" while the board stream is
+// open, or null. Saved-copy rows for those gyms stay on screen meanwhile.
+function pendingGymNote() {
+  if (!boardPending.size) return null;
+  const names = [...boardPending].map((id) => gym(id)).filter(Boolean).map((g) => `${g.brand} ${g.short}`);
+  if (!names.length) return null;
+  const n = names.length;
+  return `Still loading ${n} ${n === 1 ? 'gym' : 'gyms'}: ${names.slice(0, 3).join(', ')}${n > 3 ? ` +${n - 3}` : ''}`;
+}
+
+function appendPendingNote() {
+  const text = pendingGymNote();
+  if (text) els.boardList.appendChild(h('div', { class: 'filter-miss board-pending', attrs: { role: 'status' }, text }));
 }
 
 // "Today", "Tomorrow", then "Thu Oct 22".

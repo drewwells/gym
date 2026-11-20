@@ -110,7 +110,11 @@ const HOURS_LIFETIME = {
   sat: { open: '06:00', close: '19:00' },
 };
 
-const GYMS = [
+// Gyms taken off the board but kept ready to come back: move an entry into
+// GYMS to restore it (its provider module still ships and is tested). Nothing
+// here is served, fetched or listed.
+//   crux-central: dropped 2026-11-20, nobody has a membership there.
+const INACTIVE_GYMS = [
   {
     id: 'crux-central',
     name: 'Crux Climbing — Central',
@@ -123,10 +127,6 @@ const GYMS = [
     sourceHost: 'cruxclimbingcenter.com',
     provider: 'crux',
     status: 'live',
-    // Crux remains in the registry (deep links keep working) but we don't
-    // proactively warm its cache — it's not a destination we're optimizing
-    // for. First on-demand request pays the cold fetch.
-    poll: false,
     tz: 'America/Chicago',
     providerConfig: { locationId: 2 },
     // Crux exposes no room field; the crux provider synthesizes "Studio" vs
@@ -137,6 +137,9 @@ const GYMS = [
     minGapMinutes: DEFAULT_MIN_GAP,
     sourceUrl: 'https://www.cruxclimbingcenter.com/central-austin/calendar/',
   },
+];
+
+const GYMS = [
   {
     id: 'crunch-round-rock',
     name: 'Crunch — Round Rock',
@@ -713,4 +716,4 @@ function publicGym(g) {
   };
 }
 
-module.exports = { GYMS, getGym, defaultGymId, publicGym };
+module.exports = { GYMS, INACTIVE_GYMS, getGym, defaultGymId, publicGym };

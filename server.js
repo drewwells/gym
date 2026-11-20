@@ -3,6 +3,7 @@ const express = require('express');
 
 const { GYMS, getGym, publicGym } = require('./gyms');
 const { todayInTz, tzMidnightUTC } = require('./lib/time');
+const { createWeekCache, addDays, msUntilNextLocal, WEEK_DAYS } = require('./lib/week-cache');
 const { computeOpenFloor } = require('./lib/availability');
 const { summarizeBoardDay, dayClasses } = require('./lib/board');
 
@@ -17,101 +18,43 @@ const PROVIDERS = { crux, crunch, lafitness, golds, lifetime, blackswan };
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
-const WEEK_DAYS = 7;
+// A cached week is served as fresh for 24h; after that it is still served,
+// with a background refresh (stale-while-revalidate, lib/week-cache.js).
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-// Daily prefetch keeps every live gym's current 7-day cache warm so
-// /api/board and /api/availability reads always hit cached data. Runs once at
-// startup and then every POLL_INTERVAL_MS thereafter.
-const POLL_INTERVAL_MS = 24 * 60 * 60 * 1000;
-// Stagger upstream calls so the daily warm-up doesn't fan out concurrent hits
+// Daily refresh job: at this local time each night, fetch the window that
+// starts tomorrow, so the cache key that takes over at local midnight already
+// exists and nobody's first load of the day waits on a scrape.
+const DAILY_REFRESH_AT = { hh: 23, mm: 30 };
+// Stagger upstream calls so the refresh job doesn't fan out concurrent hits
 // against the same provider's edge.
 const POLL_STAGGER_MS = 750;
 
 app.use(express.static('public'));
 
-// Cache key: `${gymId}:${weekStartDate}` -> { fetchedAt, payload }
-const weekCache = new Map();
-// Same-key dedupe for in-flight upstream fetches (cold loads and background
-// refreshes alike) so concurrent callers share one provider call.
-const inflight = new Map();
-
-// Fetch from the provider and store in the cache. Concurrent callers for the
-// same key share the same promise. Errors propagate to the caller; background
-// refreshers should catch and log so a transient upstream failure doesn't take
-// down the process or evict the stale entry we just served.
-function fetchAndCache(gym, date, cacheKey) {
-  const existing = inflight.get(cacheKey);
-  if (existing) return existing;
-
-  const p = (async () => {
-    const startUTC = tzMidnightUTC(date, gym.tz);
-    const endUTC = new Date(startUTC.getTime() + WEEK_DAYS * 24 * 60 * 60 * 1000 - 1);
-
-    let events = [];
-    if (gym.status === 'live') {
-      const provider = PROVIDERS[gym.provider];
-      if (!provider) throw new Error(`unknown provider: ${gym.provider}`);
-      events = await provider.fetchWeek(gym, startUTC, endUTC);
-      events.sort((a, b) => new Date(a.startDT) - new Date(b.startDT));
-    }
-
-    const payload = {
-      gymId: gym.id,
-      weekStart: date,
-      weekEnd: endUTC.toISOString(),
-      events,
-    };
-    weekCache.set(cacheKey, { fetchedAt: Date.now(), payload });
-    return payload;
-  })().finally(() => inflight.delete(cacheKey));
-
-  inflight.set(cacheKey, p);
-  return p;
-}
-
-// Calendar-day delta between two YYYY-MM-DD strings (positive if `b > a`).
-// Used to test whether a requested date falls inside the current 7-day strip.
-function dayDelta(a, b) {
-  const [ay, am, ad] = a.split('-').map(Number);
-  const [by, bm, bd] = b.split('-').map(Number);
-  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
-}
-
-// Fetch (or serve cached) one week of normalized events for a gym. The cache
-// key is normally anchored on the gym's *local today* so every date in the
-// current 7-day strip shares a single weekly upstream fetch (the one the
-// daily poller warms). Dates outside the strip fall back to a date-anchored
-// entry so explicit deep links to past/future dates still work.
-//
-// Stale-while-revalidate: fresh entries (younger than CACHE_TTL_MS) are
-// returned as-is. Stale entries are returned immediately and a background
-// refresh is kicked off. Only a cold cache blocks the caller on the upstream
-// call. `?refresh=1` bypasses both paths and forces a foreground fetch.
-async function getWeek(gym, date, { refresh = false } = {}) {
-  const gymToday = todayInTz(gym.tz);
-  const delta = dayDelta(gymToday, date);
-  const anchor = (delta >= 0 && delta < WEEK_DAYS) ? gymToday : date;
-  const cacheKey = `${gym.id}:${anchor}`;
-  if (refresh) {
-    weekCache.delete(cacheKey);
-    const payload = await fetchAndCache(gym, anchor, cacheKey);
-    return { ...payload, cached: false };
+// One upstream fetch: the gym's events for the 7 local days from `anchor`.
+async function fetchWeek(gym, anchor) {
+  const startUTC = tzMidnightUTC(anchor, gym.tz);
+  const endUTC = new Date(startUTC.getTime() + WEEK_DAYS * 24 * 60 * 60 * 1000 - 1);
+  let events = [];
+  if (gym.status === 'live') {
+    const provider = PROVIDERS[gym.provider];
+    if (!provider) throw new Error(`unknown provider: ${gym.provider}`);
+    const t0 = Date.now();
+    events = await provider.fetchWeek(gym, startUTC, endUTC);
+    events.sort((a, b) => new Date(a.startDT) - new Date(b.startDT));
+    console.log(`${new Date().toISOString()} [${gym.id}] upstream fetch ${anchor}: ${events.length} events in ${Date.now() - t0}ms`);
   }
-
-  const cached = weekCache.get(cacheKey);
-  if (cached) {
-    const stale = Date.now() - cached.fetchedAt >= CACHE_TTL_MS;
-    if (stale) {
-      fetchAndCache(gym, anchor, cacheKey).catch((err) => {
-        console.error(`[${gym.id}] background refresh failed:`, err.message);
-      });
-    }
-    return { ...cached.payload, cached: true, stale };
-  }
-
-  const payload = await fetchAndCache(gym, anchor, cacheKey);
-  return { ...payload, cached: false };
+  return {
+    gymId: gym.id,
+    // Start date of the cached 7-day window (named weekStart for API compat).
+    weekStart: anchor,
+    weekEnd: endUTC.toISOString(),
+    events,
+  };
 }
+
+const weekCache = createWeekCache({ fetchWeek, ttlMs: CACHE_TTL_MS });
+const getWeek = (gym, date, opts) => weekCache.get(gym, date, opts);
 
 // Resolve the ?gym= param to a registry entry, defaulting to the first live
 // gym. Returns null if an explicit, unknown id was given.
@@ -159,78 +102,118 @@ app.get('/api/availability', async (req, res) => {
   }
 });
 
-// Aggregate view used by the home board: for the requested calendar date (in
-// each gym's own timezone), return the day's open-floor summary for every gym
-// — dance-suitable room's gaps + classes, plus rollups. Coming-soon gyms are
-// included so the UI can render them dim. Reads are served from the warmed
-// cache; one slow/failing upstream never blocks the rest.
-app.get('/api/board', async (req, res) => {
-  const refresh = req.query.refresh === '1';
-  // The board's date is interpreted in each gym's own tz; without a query
-  // param, anchor on the first live gym's today (all current gyms share
-  // America/Chicago, so this is unambiguous in practice).
+// One gym's board row for one date: the day's open-floor summary for the
+// dance-suitable room (gaps + classes) plus rollups. Coming-soon gyms come
+// back with day: null so the UI can render them dim. Never throws — a failing
+// upstream becomes { error } on that row only.
+async function boardRow(gym, date, { refresh = false } = {}) {
+  const base = publicGym(gym);
+  if (gym.status !== 'live') return { ...base, day: null };
+  try {
+    const week = await getWeek(gym, date, { refresh });
+    return { ...base, day: summarizeBoardDay(week.events, gym, date), cached: week.cached, stale: week.stale };
+  } catch (err) {
+    console.error(`[${gym.id}] board entry failed:`, err.message);
+    return { ...base, day: null, error: err.message };
+  }
+}
+
+// The board's date is interpreted in each gym's own tz; without a query
+// param, anchor on the first live gym's today (all current gyms share
+// America/Chicago, so this is unambiguous in practice).
+function boardDate(q) {
   const anchorTz = (GYMS.find((g) => g.status === 'live') || GYMS[0]).tz;
-  const date = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date))
-    ? req.query.date
-    : todayInTz(anchorTz);
+  return (q && /^\d{4}-\d{2}-\d{2}$/.test(q)) ? q : todayInTz(anchorTz);
+}
 
-  const gyms = await Promise.all(GYMS.map(async (gym) => {
-    const base = publicGym(gym);
-    if (gym.status !== 'live') {
-      return { ...base, day: null };
-    }
-    try {
-      // getWeek anchors its cache on the gym's local today for any in-strip
-      // date, so this shares the cache entry the daily poller warms — no
-      // matter which strip-day the user is asking about.
-      const week = await getWeek(gym, date, { refresh });
-      const summary = summarizeBoardDay(week.events, gym, date);
-      return { ...base, day: summary, cached: week.cached, stale: week.stale };
-    } catch (err) {
-      console.error(`[${gym.id}] board entry failed:`, err.message);
-      return { ...base, day: null, error: err.message };
-    }
-  }));
-
+// Aggregate view for one date: every gym's row, all at once.
+app.get('/api/board', async (req, res) => {
+  const date = boardDate(req.query.date);
+  const refresh = req.query.refresh === '1';
+  const gyms = await Promise.all(GYMS.map((gym) => boardRow(gym, date, { refresh })));
   res.json({ date, gyms });
 });
 
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, today: todayInTz(), gyms: GYMS.length, cacheSize: weekCache.size });
+// The whole 7-day strip for the home board, streamed as NDJSON so the client
+// can paint each gym the moment its data is ready instead of waiting for the
+// slowest provider. Lines, in order:
+//   {"type":"start","start","dates":[7 dates],"pending":[live gym ids]}
+//   {"type":"gym","id","days":{date: row}}   one per gym, in completion order
+//   {"type":"done"}
+// Warm-cache gyms all arrive within a few ms; only a cold gym is slow.
+app.get('/api/board/week', async (req, res) => {
+  const start = boardDate(req.query.start);
+  const dates = Array.from({ length: WEEK_DAYS }, (_, i) => addDays(start, i));
+  res.set({
+    'Content-Type': 'application/x-ndjson; charset=utf-8',
+    'Cache-Control': 'no-store',
+    // nginx (proxy-dfw) buffers proxied responses unless told not to.
+    'X-Accel-Buffering': 'no',
+  });
+  res.flushHeaders();
+  let closed = false;
+  res.on('close', () => { closed = true; });
+  const send = (obj) => { if (!closed) res.write(`${JSON.stringify(obj)}\n`); };
+
+  send({ type: 'start', start, dates, pending: GYMS.filter((g) => g.status === 'live').map((g) => g.id) });
+  await Promise.all(GYMS.map(async (gym) => {
+    const rows = await Promise.all(dates.map((d) => boardRow(gym, d)));
+    send({ type: 'gym', id: gym.id, days: Object.fromEntries(dates.map((d, i) => [d, rows[i]])) });
+  }));
+  send({ type: 'done' });
+  res.end();
 });
 
-// Walk every live, poll-enabled gym in sequence (small delay between to avoid
-// concurrent fans against the same upstream) and force-refresh the current
-// 7-day window. One failure logs and moves on — the rest still get warmed.
-// Gyms with `poll: false` are skipped (still reachable on demand).
-async function pollAllGyms() {
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, today: todayInTz(), gyms: GYMS.length, cacheSize: weekCache.size() });
+});
+
+// Walk every live, poll-enabled gym in sequence (small delay between so we
+// don't fan out against one upstream) and fetch the window starting at
+// `anchorFor(gym)`, overwriting the cached copy. One failure logs and moves
+// on; windows already fresh are skipped. Gyms with `poll: false` are skipped
+// (still fetched on demand).
+async function refreshAllGyms(label, anchorFor) {
   const live = GYMS.filter((g) => g.status === 'live' && g.poll !== false);
-  console.log(`Daily poll: refreshing ${live.length} gyms…`);
+  console.log(`${new Date().toISOString()} ${label}: refreshing ${live.length} gyms…`);
   let ok = 0;
   let fail = 0;
+  let skipped = 0;
   for (const gym of live) {
+    const anchor = anchorFor(gym);
+    weekCache.evictExpired(gym);
+    // A reader may already have filled it (e.g. a page load during startup).
+    if (weekCache.isFresh(gym, anchor)) { skipped++; continue; }
     try {
-      const today = todayInTz(gym.tz);
-      await getWeek(gym, today, { refresh: true });
+      await weekCache.warm(gym, anchor);
       ok++;
     } catch (err) {
       fail++;
-      console.error(`[${gym.id}] daily poll failed:`, err.message);
+      console.error(`[${gym.id}] ${label} failed:`, err.message);
     }
-    if (POLL_STAGGER_MS > 0) {
-      await new Promise((r) => setTimeout(r, POLL_STAGGER_MS));
-    }
+    if (POLL_STAGGER_MS > 0) await new Promise((r) => setTimeout(r, POLL_STAGGER_MS));
   }
-  console.log(`Daily poll done: ${ok} ok, ${fail} failed`);
+  console.log(`${new Date().toISOString()} ${label} done: ${ok} ok, ${fail} failed, ${skipped} already fresh`);
 }
 
-function startDailyPoll() {
-  // Fire-and-forget initial warm-up. Don't block the listen() callback on it
-  // — readiness probes shouldn't wait for upstreams.
-  pollAllGyms().catch((err) => console.error('initial poll failed:', err.message));
-  setInterval(() => {
-    pollAllGyms().catch((err) => console.error('daily poll failed:', err.message));
-  }, POLL_INTERVAL_MS).unref();
+// At startup, fill today's window (the cache is in memory, so a restart
+// starts empty). Then every night at DAILY_REFRESH_AT local, fetch the window
+// that starts tomorrow, ready for the midnight key rollover. Between runs,
+// reads come from the cache; a stale entry refreshes in the background.
+function startDailyRefresh() {
+  refreshAllGyms('startup refresh', (g) => todayInTz(g.tz))
+    .catch((err) => console.error('startup refresh failed:', err.message));
+  const tz = (GYMS.find((g) => g.status === 'live') || GYMS[0]).tz;
+  const schedule = () => {
+    const ms = msUntilNextLocal(tz, DAILY_REFRESH_AT.hh, DAILY_REFRESH_AT.mm);
+    console.log(`Daily refresh scheduled in ${Math.round(ms / 60000)} min`);
+    setTimeout(async () => {
+      await refreshAllGyms('daily refresh', (g) => addDays(todayInTz(g.tz), 1))
+        .catch((err) => console.error('daily refresh failed:', err.message));
+      schedule();
+    }, ms).unref();
+  };
+  schedule();
 }
 
 // SPA fallback: deep links like /crunch-round-rock have no file on disk
@@ -245,5 +228,5 @@ app.use((req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`Gym calendar listening on :${PORT} (${GYMS.length} gyms)`);
-  startDailyPoll();
+  startDailyRefresh();
 });
